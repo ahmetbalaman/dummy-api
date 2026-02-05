@@ -1,16 +1,35 @@
 [
   {
-    "id": "pt1",
-    "name": "Latte",
-    "priceTL": 80,
-    "stock": 20,
+    "id": "pp1",
+    "collectionId": "c1",
+    "collectionName": "Seramik Koleksiyonu",
+    "name": "El Yapımı Seramik Kupa",
+    "description": "Her biri özenle el yapımı seramik kahve kupası",
+    "pricePoint": 300,
+    "stock": 3,
+    "imageUrl": "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400",
     "isActive": true
   },
   {
-    "id": "pt2",
-    "name": "Americano",
-    "priceTL": 70,
-    "stock": 15,
+    "id": "pp2",
+    "collectionId": "c1",
+    "collectionName": "Seramik Koleksiyonu",
+    "name": "Seramik Tabak",
+    "description": "El yapımı dekoratif seramik tabak",
+    "pricePoint": 450,
+    "stock": 2,
+    "imageUrl": "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400",
+    "isActive": true
+  },
+  {
+    "id": "pp3",
+    "collectionId": "c1",
+    "collectionName": "Seramik Koleksiyonu",
+    "name": "Seramik Kase",
+    "description": "Orta boy el yapımı seramik kase",
+    "pricePoint": 400,
+    "stock": 5,
+    "imageUrl": "https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=400",
     "isActive": true
   }
 ]

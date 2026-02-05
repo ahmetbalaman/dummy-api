@@ -1,0 +1,73 @@
+[
+  {
+    "id": "ship1",
+    "collectionSetId": "cs1",
+    "collectionSetName": "Seramik Koleksiyonu - Set A",
+    "status": "delivered",
+    "trackingNumber": "TRK123456789",
+    "shippingCompany": "Aras Kargo",
+    "totalItems": 20,
+    "products": [
+      {
+        "productId": "pp1",
+        "productName": "El Yapımı Seramik Kupa",
+        "quantity": 10,
+        "imageUrl": "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400"
+      },
+      {
+        "productId": "pp2",
+        "productName": "Seramik Tabak",
+        "quantity": 5,
+        "imageUrl": "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400"
+      },
+      {
+        "productId": "pp3",
+        "productName": "Seramik Kase",
+        "quantity": 5,
+        "imageUrl": "https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=400"
+      }
+    ],
+    "shippedAt": "2026-02-01T09:00:00Z",
+    "deliveredAt": "2026-02-03T14:30:00Z",
+    "receivedConfirmed": true,
+    "receivedBy": "Ahmet Yönetici",
+    "receivedNote": "Tüm ürünler sağlam teslim alındı",
+    "createdAt": "2026-02-01T08:00:00Z"
+  },
+  {
+    "id": "ship3",
+    "collectionSetId": "cs1",
+    "collectionSetName": "Seramik Koleksiyonu - Set A",
+    "status": "pending",
+    "trackingNumber": null,
+    "shippingCompany": null,
+    "totalItems": 20,
+    "products": [
+      {
+        "productId": "pp1",
+        "productName": "El Yapımı Seramik Kupa",
+        "quantity": 10,
+        "imageUrl": "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400"
+      },
+      {
+        "productId": "pp2",
+        "productName": "Seramik Tabak",
+        "quantity": 5,
+        "imageUrl": "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400"
+      },
+      {
+        "productId": "pp3",
+        "productName": "Seramik Kase",
+        "quantity": 5,
+        "imageUrl": "https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=400"
+      }
+    ],
+    "shippedAt": null,
+    "deliveredAt": null,
+    "estimatedDeliveryAt": null,
+    "receivedConfirmed": false,
+    "receivedBy": null,
+    "receivedNote": null,
+    "createdAt": "2026-02-05T11:00:00Z"
+  }
+]

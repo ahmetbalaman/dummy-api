@@ -2,6 +2,27 @@
   {
     "id": "b1",
     "name": "Kahve Dükkanı",
-    "distance": "120m"
+    "description": "El yapımı kahve ve seramik koleksiyonları",
+    "address": "Beyoğlu, İstiklal Cad. No:123",
+    "phone": "+905551234567",
+    "logoUrl": "https://api.dicebear.com/7.x/initials/svg?seed=KD",
+    "coverImageUrl": "https://images.unsplash.com/photo-1511920170033-f8396924c348?w=800",
+    "rating": 4.7,
+    "totalReviews": 248,
+    "distance": "120m",
+    "isOpen": true
+  },
+  {
+    "id": "b2",
+    "name": "Seramik Atölyesi",
+    "description": "El yapımı seramik ürünler",
+    "address": "Kadıköy, Moda Cad. No:45",
+    "phone": "+905559876543",
+    "logoUrl": "https://api.dicebear.com/7.x/initials/svg?seed=SA",
+    "coverImageUrl": "https://images.unsplash.com/photo-1493106641515-6b5631de4bb9?w=800",
+    "rating": 4.9,
+    "totalReviews": 87,
+    "distance": "3.2km",
+    "isOpen": false
   }
 ]

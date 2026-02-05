@@ -2,6 +2,23 @@
   {
     "id": "b1",
     "name": "Kahve Dükkanı",
+    "description": "El yapımı kahve ve seramik koleksiyonları",
+    "address": "Beyoğlu, İstiklal Cad. No:123, İstanbul",
+    "phone": "+905551234567",
+    "email": "info@kahvedukkani.com",
+    "logoUrl": "https://api.dicebear.com/7.x/initials/svg?seed=KD",
+    "coverImageUrl": "https://images.unsplash.com/photo-1511920170033-f8396924c348?w=800",
+    "workingHours": {
+      "monday": "08:00-22:00",
+      "tuesday": "08:00-22:00",
+      "wednesday": "08:00-22:00",
+      "thursday": "08:00-22:00",
+      "friday": "08:00-23:00",
+      "saturday": "09:00-23:00",
+      "sunday": "09:00-21:00"
+    },
+    "rating": 4.7,
+    "totalReviews": 248,
     "isActive": true,
     "subscriptionStatus": "active",
     "createdAt": "2026-02-01T10:00:00Z"
@@ -9,6 +26,23 @@
   {
     "id": "b2",
     "name": "Seramik Atölyesi",
+    "description": "El yapımı seramik ürünler",
+    "address": "Kadıköy, Moda Cad. No:45, İstanbul",
+    "phone": "+905559876543",
+    "email": "info@seramikatoylesi.com",
+    "logoUrl": "https://api.dicebear.com/7.x/initials/svg?seed=SA",
+    "coverImageUrl": "https://images.unsplash.com/photo-1493106641515-6b5631de4bb9?w=800",
+    "workingHours": {
+      "monday": "10:00-19:00",
+      "tuesday": "10:00-19:00",
+      "wednesday": "10:00-19:00",
+      "thursday": "10:00-19:00",
+      "friday": "10:00-19:00",
+      "saturday": "11:00-18:00",
+      "sunday": "Kapalı"
+    },
+    "rating": 4.9,
+    "totalReviews": 87,
     "isActive": false,
     "subscriptionStatus": "expired",
     "createdAt": "2026-01-10T09:30:00Z"
