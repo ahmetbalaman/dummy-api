@@ -1,0 +1,14 @@
+[
+  {
+    "id": "log1",
+    "level": "info",
+    "message": "Business created",
+    "createdAt": "2026-02-05T08:00:00Z"
+  },
+  {
+    "id": "log2",
+    "level": "warning",
+    "message": "Subscription expired",
+    "createdAt": "2026-02-04T22:00:00Z"
+  }
+]

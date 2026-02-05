@@ -1,0 +1,16 @@
+[
+  {
+    "id": "pt1",
+    "name": "Latte",
+    "priceTL": 80,
+    "stock": 20,
+    "isActive": true
+  },
+  {
+    "id": "pt2",
+    "name": "Americano",
+    "priceTL": 70,
+    "stock": 15,
+    "isActive": true
+  }
+]

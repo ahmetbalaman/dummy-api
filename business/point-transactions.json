@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ptx1",
+    "userId": "u1",
+    "businessId": "b1",
+    "type": "earn",
+    "point": 8,
+    "reason": "TL Order",
+    "createdAt": "2026-02-05T10:30:00Z"
+  },
+  {
+    "id": "ptx2",
+    "userId": "u1",
+    "businessId": "b1",
+    "type": "spend",
+    "point": 300,
+    "reason": "Collection Purchase",
+    "createdAt": "2026-02-05T10:35:00Z"
+  }
+]

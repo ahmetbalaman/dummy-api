@@ -1,0 +1,23 @@
+{
+  "productsTL": [
+    {
+      "id": "pt1",
+      "name": "Latte",
+      "priceTL": 80
+    }
+  ],
+  "collections": [
+    {
+      "id": "c1",
+      "name": "Seramik Koleksiyonu"
+    }
+  ],
+  "productsPoint": [
+    {
+      "id": "pp1",
+      "collectionId": "c1",
+      "name": "Seramik Kupa",
+      "pricePoint": 300
+    }
+  ]
+}
