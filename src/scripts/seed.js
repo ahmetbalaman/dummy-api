@@ -125,6 +125,20 @@ const seedDatabase = async () => {
       imageUrl: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400',
       businessId: business1._id
     });
+
+    const collection2 = await Collection.create({
+      name: 'Ahşap Koleksiyonu',
+      description: 'Doğal ahşap ürünler',
+      imageUrl: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=400',
+      businessId: null // Henüz hiçbir işletmeye atanmamış
+    });
+
+    const collection3 = await Collection.create({
+      name: 'Cam Koleksiyonu',
+      description: 'El işçiliği cam ürünler',
+      imageUrl: 'https://images.unsplash.com/photo-1525974160448-038dacadcc71?w=400',
+      businessId: null // Henüz hiçbir işletmeye atanmamış
+    });
     console.log('🎨 Collections created');
 
     // Create TL Products
