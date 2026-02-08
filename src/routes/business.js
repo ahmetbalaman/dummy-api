@@ -724,11 +724,23 @@ router.post('/orders/restock', async (req, res) => {
       return res.status(400).json({ error: 'Items required' });
     }
 
+    const business = await Business.findById(req.businessId);
+    if (!business) {
+      return res.status(404).json({ error: 'Business not found' });
+    }
+
+    // Toplam ürün sayısını hesapla
+    const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+
     // Sipariş oluştur (Shipment olarak kaydet)
     const shipment = await Shipment.create({
       businessId: req.businessId,
+      businessName: business.name,
+      businessAddress: business.address,
+      businessPhone: business.phone,
       type: 'restock', // Yeni alan: 'admin' veya 'restock'
       status: 'pending',
+      totalItems: totalItems,
       products: items.map(item => ({
         productId: item.productId,
         name: item.productName,
@@ -742,12 +754,12 @@ router.post('/orders/restock', async (req, res) => {
     await Log.create({
       level: 'info',
       category: 'order',
-      message: `Stok siparişi oluşturuldu: ${items.reduce((sum, item) => sum + item.quantity, 0)} ürün`,
+      message: `Stok siparişi oluşturuldu: ${totalItems} ürün`,
       businessId: req.businessId,
       metadata: {
         shipmentId: shipment._id,
         items: items.map(i => ({ name: i.productName, quantity: i.quantity })),
-        totalItems: items.reduce((sum, item) => sum + item.quantity, 0)
+        totalItems: totalItems
       }
     });
     

@@ -463,16 +463,111 @@ router.delete('/products-point/:id', async (req, res) => {
   }
 });
 
-// Get all shipments
+// Get all shipments (admin'den işletmeye gönderilen)
 router.get('/shipments', async (req, res) => {
   try {
-    const shipments = await Shipment.find()
+    const shipments = await Shipment.find({ type: 'admin' })
       .populate('businessId', 'name address phone')
       .populate('collectionSetId', 'name description')
       .sort('-createdAt');
     res.json(shipments);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all restock orders (işletmelerden gelen siparişler)
+router.get('/orders/restock', async (req, res) => {
+  try {
+    const { status, businessId } = req.query;
+    const query = { type: 'restock' };
+    
+    if (status) query.status = status;
+    if (businessId) query.businessId = businessId;
+    
+    const orders = await Shipment.find(query)
+      .populate('businessId', 'name address phone email')
+      .sort('-createdAt')
+      .lean();
+    
+    // businessId populate edilmişse, businessName vs. alanlarını doldur
+    const ordersWithBusinessInfo = orders.map(order => {
+      if (order.businessId && typeof order.businessId === 'object') {
+        return {
+          ...order,
+          businessName: order.businessName || order.businessId.name,
+          businessAddress: order.businessAddress || order.businessId.address,
+          businessPhone: order.businessPhone || order.businessId.phone,
+          businessId: order.businessId._id || order.businessId
+        };
+      }
+      return order;
+    });
+    
+    res.json(ordersWithBusinessInfo);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update restock order status
+router.patch('/orders/restock/:id', async (req, res) => {
+  try {
+    const { status, trackingNumber, shippingCompany, notes } = req.body;
+    
+    const order = await Shipment.findOne({ 
+      _id: req.params.id, 
+      type: 'restock' 
+    }).populate('businessId', 'name');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Restock order not found' });
+    }
+
+    // Durumu güncelle
+    if (status) order.status = status;
+    if (trackingNumber) order.trackingNumber = trackingNumber;
+    if (shippingCompany) order.shippingCompany = shippingCompany;
+    if (notes !== undefined) order.notes = notes;
+    
+    // Durum değişikliklerine göre tarih güncelle
+    if (status === 'in_transit' && !order.shippedAt) {
+      order.shippedAt = new Date();
+    }
+    if (status === 'delivered' && !order.deliveredAt) {
+      order.deliveredAt = new Date();
+    }
+    
+    await order.save();
+    
+    const statusText = {
+      pending: 'Beklemede',
+      in_transit: 'Kargolandı',
+      delivered: 'Teslim Edildi',
+      cancelled: 'İptal Edildi'
+    }[order.status] || order.status;
+    
+    await logger.shipment(
+      `Stok siparişi güncellendi: ${order.businessId?.name} - ${statusText}`, 
+      status === 'delivered' ? 'success' : status === 'cancelled' ? 'warning' : 'info',
+      {
+        businessId: order.businessId?._id,
+        metadata: { 
+          orderId: order._id,
+          status: order.status,
+          trackingNumber: order.trackingNumber,
+          totalItems: order.products?.reduce((sum, p) => sum + p.quantity, 0) || 0
+        },
+        ipAddress: req.ip
+      }
+    );
+    
+    res.json(order);
+  } catch (error) {
+    await logger.shipment(`Stok siparişi güncelleme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -559,94 +654,6 @@ router.patch('/shipments/:id', async (req, res) => {
     await logger.shipment(`Sevkiyat güncelleme hatası: ${error.message}`, 'error', {
       ipAddress: req.ip
     });
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Orders - TL Orders
-router.get('/orders-tl', async (req, res) => {
-  try {
-    const { businessId, status } = req.query;
-    const query = {};
-    if (businessId) query.businessId = businessId;
-    if (status) query.status = status;
-    
-    const orders = await OrderTL.find(query)
-      .populate('businessId', 'name')
-      .populate('userId', 'name phone')
-      .populate('items.productId', 'name')
-      .sort('-createdAt');
-    res.json(orders);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Orders - Point Orders
-router.get('/orders-point', async (req, res) => {
-  try {
-    const { businessId, status } = req.query;
-    const query = {};
-    if (businessId) query.businessId = businessId;
-    if (status) query.status = status;
-    
-    const orders = await OrderPoint.find(query)
-      .populate('businessId', 'name')
-      .populate('userId', 'name phone')
-      .populate('items.productId', 'name')
-      .sort('-createdAt');
-    res.json(orders);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Update order status - TL
-router.patch('/orders-tl/:id', async (req, res) => {
-  try {
-    const { status } = req.body;
-    const order = await OrderTL.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true, runValidators: true }
-    ).populate('businessId', 'name').populate('userId', 'name');
-    
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-    
-    await logger.system(`TL Sipariş durumu güncellendi: ${order._id} - ${status}`, 'info', {
-      metadata: { orderId: order._id, status, businessId: order.businessId },
-      ipAddress: req.ip
-    });
-    
-    res.json(order);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Update order status - Point
-router.patch('/orders-point/:id', async (req, res) => {
-  try {
-    const { status } = req.body;
-    const order = await OrderPoint.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true, runValidators: true }
-    ).populate('businessId', 'name').populate('userId', 'name');
-    
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-    
-    await logger.system(`Point Sipariş durumu güncellendi: ${order._id} - ${status}`, 'info', {
-      metadata: { orderId: order._id, status, businessId: order.businessId },
-      ipAddress: req.ip
-    });
-    
-    res.json(order);
-  } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });

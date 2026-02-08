@@ -8,7 +8,7 @@ const shipmentSchema = new mongoose.Schema({
   businessName: String,
   businessAddress: String,
   businessPhone: String,
-  status: { type: String, enum: ['pending', 'in_transit', 'delivered', 'cancelled'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'approved', 'in_transit', 'delivered', 'cancelled'], default: 'pending' },
   trackingNumber: String,
   shippingCompany: String,
   totalItems: { type: Number },
