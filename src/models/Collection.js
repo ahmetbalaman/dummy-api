@@ -4,7 +4,7 @@ const collectionSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: String,
   imageUrl: String,
-  businessId: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', required: true },
+  businessId: { type: mongoose.Schema.Types.ObjectId, ref: 'Business' }, // Optional - null ise genel koleksiyon
   isActive: { type: Boolean, default: true }
 }, {
   timestamps: true
