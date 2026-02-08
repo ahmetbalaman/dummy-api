@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: loyalty-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: loyalty-system
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - loyalty-network
+
+  api:
+    build: .
+    container_name: loyalty-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/loyalty-system
+      - PORT=3000
+    env_file:
+      - .env
+    depends_on:
+      - mongodb
+    networks:
+      - loyalty-network
+    command: npm start
+
+volumes:
+  mongodb_data:
+
+networks:
+  loyalty-network:
+    driver: bridge

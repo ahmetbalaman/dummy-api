@@ -1,0 +1,300 @@
+{
+  "info": {
+    "name": "Loyalty System API",
+    "description": "Complete API collection for testing",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3131/api"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "businessToken",
+      "value": ""
+    },
+    {
+      "key": "userToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('adminToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@system.com\",\n  \"password\": \"admin123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/admin",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "admin"]
+            }
+          }
+        },
+        {
+          "name": "Business Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('businessToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"info@kahvedukkani.com\",\n  \"password\": \"business123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/business",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "business"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get All Businesses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/businesses",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "businesses"]
+            }
+          }
+        },
+        {
+          "name": "Create Business",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Yeni Kahveci\",\n  \"email\": \"yeni@kahveci.com\",\n  \"password\": \"password123\",\n  \"address\": \"İstanbul\",\n  \"phone\": \"+905551112233\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/businesses",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "businesses"]
+            }
+          }
+        },
+        {
+          "name": "Get Collection Sets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/collection-sets",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "collection-sets"]
+            }
+          }
+        },
+        {
+          "name": "Get All Shipments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/shipments",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "shipments"]
+            }
+          }
+        },
+        {
+          "name": "System Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/system",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "system"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Business",
+      "item": [
+        {
+          "name": "Get Business Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{businessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/business/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "me"]
+            }
+          }
+        },
+        {
+          "name": "Get Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{businessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/business/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "categories"]
+            }
+          }
+        },
+        {
+          "name": "Get TL Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{businessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/business/products-tl",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "products-tl"]
+            }
+          }
+        },
+        {
+          "name": "Get TL Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{businessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/business/orders-tl",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "orders-tl"]
+            }
+          }
+        },
+        {
+          "name": "Get Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{businessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/business/analytics",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "analytics"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Kiosk",
+      "item": [
+        {
+          "name": "Get Menu",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kiosk/menu/:businessId",
+              "host": ["{{baseUrl}}"],
+              "path": ["kiosk", "menu", ":businessId"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
