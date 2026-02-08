@@ -143,9 +143,12 @@ Global puan kavramı yoktur.
 
 ## � Auth ve İşletme Login Akışı
 
-### Admin Login
+### Admin Login (Email + Şifre)
 ```json
-GET /auth.json → admin objesi
+// Frontend → POST /api/auth/admin { email, password }
+// Node.js API → Şifre kontrol eder ve response döner
+
+GET /auth.json → admin objesi (dummy response)
 {
   "token": "dummy-admin-token-123",
   "user": {
@@ -157,13 +160,17 @@ GET /auth.json → admin objesi
 }
 ```
 
-**Kullanım:** Admin paneli bu token ile tüm sisteme erişir.
+**Dummy Data:** Sadece login başarılı olduğunda dönen response'u içerir  
+**Gerçek API:** Node.js backend email + şifre kontrol eder, bcrypt + JWT kullanır
 
 ---
 
-### İşletme Login
+### İşletme Login (Email + Şifre)
 ```json
-GET /auth.json → business objesi
+// Frontend → POST /api/auth/business { email, password }
+// Node.js API → Şifre kontrol eder ve response döner
+
+GET /auth.json → business objesi (dummy response)
 {
   "token": "dummy-business-token-456",
   "user": {
@@ -177,32 +184,106 @@ GET /auth.json → business objesi
 ```
 
 **Kullanım:** 
-1. İşletme paneli login yapar
-2. `businessId: "b1"` alır
+1. İşletme paneli email + şifre ile giriş yapar
+2. `businessId: "b1"` alır → Bu çok kritik!
 3. Sipariş çekerken: `orders-tl.json` → Sadece `businessId === "b1"` olanları gösterir
 4. Ürünlerini listeler: `products-tl.json` → Sadece kendi ürünleri
 
 **Neden önemli?**  
 Aksi takdirde **tüm işletmelerin siparişleri** karışır. Her işletme sadece kendine ait verileri görmelidir.
 
+**Dummy vs Gerçek API:**
+- **Dummy:** Şifre yok, sadece response. Frontend auth bypass eder
+- **Gerçek Node.js API:** 
+  - Şifre bcrypt ile hash'lenmiş olarak DB'de tutulur
+  - Login'de bcrypt.compare() ile kontrol edilir
+  - JWT token üretilir ve döner
+
 ---
 
-### Kullanıcı Login
+### Kullanıcı Login - Google OAuth
 ```json
-GET /auth.json → user objesi
+// Frontend → POST /api/auth/google { provider: "google", idToken }
+// Node.js API → Google token doğrular ve response döner
+
+GET /auth.json → user_google objesi (dummy response)
 {
   "token": "dummy-user-token-789",
   "user": {
     "id": "u1",
     "role": "user",
+    "provider": "google",
     "name": "Ayşe Yılmaz",
-    "email": "ayse@example.com",
-    "phone": "+905551234567"
+    "email": "ayse@gmail.com",
+    "avatarUrl": "https://lh3.googleusercontent.com/...",
+    "phone": null
   }
 }
 ```
 
-**Kullanım:** Mobil uygulama, kullanıcı profili ve sipariş geçmişi için kullanır.
+**Kullanım:** Mobil uygulama - Google ile giriş (OAuth 2.0)  
+**Gerçek API:** Node.js'de `google-auth-library` ile token doğrulanır
+
+---
+
+### Kullanıcı Login - Apple Sign In
+```json
+// Frontend → POST /api/auth/apple { provider: "apple", identityToken, authorizationCode }
+// Node.js API → Apple token doğrular ve response döner
+
+GET /auth.json → user_apple objesi (dummy response)
+{
+  "token": "dummy-user-token-456",
+  "user": {
+    "id": "u2",
+    "role": "user",
+    "provider": "apple",
+    "name": "Mehmet Kaya",
+    "email": "mehmet@privaterelay.appleid.com",
+    "avatarUrl": null,
+    "phone": null
+  }
+}
+```
+
+**Kullanım:** Mobil uygulama - Apple ile giriş (Sign in with Apple)  
+**Gerçek API:** Node.js'de Apple'ın public key ile JWT doğrulanır
+
+---
+
+## 🔄 OAuth Akışı (Gerçek Senaryo)
+
+```
+┌─────────┐      ┌──────────┐      ┌──────────────┐
+│ Flutter │─────▶│  Google  │      │   Node.js    │
+│   App   │      │  / Apple │      │   Backend    │
+└─────────┘      └──────────┘      └──────────────┘
+     │                 │                    │
+     │  1. Login       │                    │
+     ├────────────────▶│                    │
+     │                 │                    │
+     │  2. idToken     │                    │
+     │◀────────────────┤                    │
+     │                                      │
+     │  3. POST /auth/google { idToken }    │
+     ├─────────────────────────────────────▶│
+     │                                      │
+     │                    4. Token doğrula  │
+     │                    5. User oluştur   │
+     │                    6. JWT üret       │
+     │                                      │
+     │  7. { token, user }                  │
+     │◀─────────────────────────────────────┤
+```
+
+**Dummy API:** Adım 3'te direkt dummy response döner (doğrulama YOK)  
+**Gerçek API:** Adım 4-6 Node.js'de gerçekleşir
+
+**Önemli Notlar:**
+- Mobil kullanıcılar **sadece** OAuth ile giriş yapar (email/şifre YOK)
+- Apple Sign In için email gizlenebilir (privaterelay)
+- Avatar Google'dan gelir, Apple'da genelde yok
+- Node.js'de `google-auth-library` ve `apple-signin-auth` paketleri kullanılır
 
 ---
 
