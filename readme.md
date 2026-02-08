@@ -26,6 +26,21 @@ Bu API şu an **dummy JSON veriler** ile temsil edilir. Ancak yapı, birebir ger
 
 Bu API **rol bazlı ayrım içermez**, sadece veri döner. Yetki frontend tarafında varsayılır.
 
+### 🏪 İşletme Hesap Sistemi
+
+**Her işletme bağımsız bir hesap olarak çalışır:**
+
+1. **Admin panelinden işletme eklenir** → Sistem'e yeni işletme kaydedilir (ID: b1, b2, vb.)
+2. **İşletme login olur** → `auth.json`'dan `businessId` alır (örn: b1)
+3. **İşletme sadece kendi verilerini görür:**
+   - Sipariş listelerken → Sadece `businessId: "b1"` olan siparişler
+   - Ürünlerini yönetir → Sadece kendi ürünleri
+   - Kargolarını takip eder → Sadece kendine gelen kargolar
+4. **Kullanıcılar tüm işletmeleri görebilir** → Mobil uygulamada tüm işletmeler listelenir
+5. **Sipariş oluşturulduğunda `businessId` mutlaka atanır** → Hangi işletmeye ait olduğu belli olur
+
+⚠️ **Kritik:** Tüm siparişlerde `businessId` **zorunludur**. Aksi takdirde işletme hangi siparişin kendisine ait olduğunu bilemez.
+
 ---
 
 ## 🎁 Koleksiyon Seti Sistemi (Admin → İşletme)
@@ -84,7 +99,9 @@ Global puan kavramı yoktur.
 
 ### Auth
 
-* Giriş yapıldığını varsayan dummy response üretir
+* Üç farklı rol için giriş örnekleri içerir: **admin**, **business**, **user**
+* Her rol kendi token ve kullanıcı bilgilerini döner
+* İşletme girişinde `businessId` döner (önemli: siparişleri filtrelemek için kullanılır)
 
 ### Admin
 
@@ -124,7 +141,72 @@ Global puan kavramı yoktur.
 
 ---
 
-## 📦 Dummy API Kullanım Şekli
+## � Auth ve İşletme Login Akışı
+
+### Admin Login
+```json
+GET /auth.json → admin objesi
+{
+  "token": "dummy-admin-token-123",
+  "user": {
+    "id": "admin1",
+    "role": "admin",
+    "name": "Admin User",
+    "email": "admin@system.com"
+  }
+}
+```
+
+**Kullanım:** Admin paneli bu token ile tüm sisteme erişir.
+
+---
+
+### İşletme Login
+```json
+GET /auth.json → business objesi
+{
+  "token": "dummy-business-token-456",
+  "user": {
+    "id": "b1",
+    "role": "business",
+    "businessId": "b1",  ← ÇOK ÖNEMLİ
+    "businessName": "Kahve Dükkanı",
+    "email": "info@kahvedukkani.com"
+  }
+}
+```
+
+**Kullanım:** 
+1. İşletme paneli login yapar
+2. `businessId: "b1"` alır
+3. Sipariş çekerken: `orders-tl.json` → Sadece `businessId === "b1"` olanları gösterir
+4. Ürünlerini listeler: `products-tl.json` → Sadece kendi ürünleri
+
+**Neden önemli?**  
+Aksi takdirde **tüm işletmelerin siparişleri** karışır. Her işletme sadece kendine ait verileri görmelidir.
+
+---
+
+### Kullanıcı Login
+```json
+GET /auth.json → user objesi
+{
+  "token": "dummy-user-token-789",
+  "user": {
+    "id": "u1",
+    "role": "user",
+    "name": "Ayşe Yılmaz",
+    "email": "ayse@example.com",
+    "phone": "+905551234567"
+  }
+}
+```
+
+**Kullanım:** Mobil uygulama, kullanıcı profili ve sipariş geçmişi için kullanır.
+
+---
+
+## �📦 Dummy API Kullanım Şekli
 
 Bu API gerçek bir server değildir.
 
@@ -255,13 +337,14 @@ Aşağıyı **aynen** kullanabilirsin.
 
 > API yetki kontrolü yapmaz
 > Her panel **kendi rolünü varsayar**
+> İşletme paneli **businessId** ile kendi verilerini filtreler
 
-| Panel       | Rol Varsayımı |
-| ----------- | ------------- |
-| Admin UI    | admin         |
-| Business UI | business      |
-| Kiosk       | session-based |
-| Mobile      | user          |
+| Panel       | Rol Varsayımı | businessId Gerekli? |
+| ----------- | ------------- | ------------------- |
+| Admin UI    | admin         | ❌ (tüm verileri görür) |
+| Business UI | business      | ✅ (sadece kendi siparişleri) |
+| Kiosk       | session-based | ✅ (işletme bağlamında çalışır) |
+| Mobile      | user          | ❌ (kullanıcı tüm işletmeleri görebilir) |
 
 ---
 
@@ -334,8 +417,8 @@ ProductPoint
 
 OrderTL
  └─ id
+ └─ businessId (⚠️ ZORUNLU - Her sipariş bir işletmeye aittir)
  └─ userId
- └─ businessId
  └─ items[]
     └─ productId
     └─ quantity
@@ -346,8 +429,8 @@ OrderTL
 
 OrderPoint
  └─ id
+ └─ businessId (⚠️ ZORUNLU - Her sipariş bir işletmeye aittir)
  └─ userId
- └─ businessId
  └─ items[]
     └─ productId
     └─ quantity
@@ -394,6 +477,51 @@ Loyalty
 * TL + Puan aynı sipariş
 * Puan → TL dönüşümü
 * A işletmesinin puanı → B işletmesi
+
+---
+
+## 🏪 Yeni İşletme Ekleme ve Sipariş Akışı
+
+### Adım 1: Admin İşletme Ekler
+```json
+// admin/businesses.json
+{
+  "id": "b2",
+  "name": "Yeni Kahveci",
+  "email": "info@yenikahveci.com",
+  "subscriptionStatus": "active",
+  ...
+}
+```
+
+### Adım 2: İşletme Login Olur
+```json
+// auth.json → business objesi
+{
+  "businessId": "b2",
+  "businessName": "Yeni Kahveci"
+}
+```
+
+### Adım 3: Kullanıcı Sipariş Verir
+```json
+// Mobil uygulama → POST /order-tl
+{
+  "userId": "u1",
+  "businessId": "b2",  ← İşletme bilgisi
+  "items": [...],
+  "totalTL": 150
+}
+```
+
+### Adım 4: İşletme Siparişi Görür
+```javascript
+// business/orders-tl.json
+const orders = allOrders.filter(o => o.businessId === currentUser.businessId)
+// b2 sadece kendi siparişlerini görür
+```
+
+**✅ Sonuç:** Her işletme bağımsız hesap gibi çalışır, veriler karışmaz.
 
 ---
 
@@ -492,7 +620,7 @@ Amaç:
 
 ```
 dummy-api/
-├── auth.json
+├── auth.json                    (🔑 Rol bazlı login örnekleri: admin, business, user)
 ├── admin/
 │   ├── businesses.json          (detaylı işletme bilgileri)
 │   ├── collection-sets.json     (🆕 admin'in oluşturduğu koleksiyon setleri)
@@ -532,6 +660,14 @@ dummy-api/
 ---
 
 ## 🎨 Yeni Özellikler
+
+### ✅ Rol Bazlı Auth Sistemi
+Üç farklı rol için giriş senaryoları:
+- **Admin:** Tüm sistemi yönetir, işletme ekler/çıkarır
+- **Business:** Sadece kendi işletmesinin verilerini görür (`businessId` ile filtreleme)
+- **User:** Mobil kullanıcı, tüm işletmelere sipariş verebilir
+
+**Önemli:** İşletme login'de dönen `businessId` sayesinde işletme paneli sadece kendi siparişlerini gösterir.
 
 ### ✅ Sipariş Detayları
 Artık her sipariş **hangi ürünlerin** alındığını içerir:
