@@ -178,6 +178,7 @@ const seedDatabase = async () => {
 
     // Create Point Products
     await ProductPoint.create([
+      // Seramik Koleksiyonu (business1'e ait)
       {
         name: 'El Yapımı Seramik Kupa',
         description: 'Özel tasarım seramik kupa',
@@ -197,6 +198,74 @@ const seedDatabase = async () => {
         stock: 5,
         imageUrl: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=400',
         businessId: business1._id
+      },
+      // Ahşap Koleksiyonu (henüz hiçbir işletmeye ait değil - admin tarafından yönetiliyor)
+      {
+        name: 'Ahşap Kaşık Seti',
+        description: 'El yapımı ahşap kaşık seti (3 adet)',
+        collectionId: collection2._id,
+        collectionName: collection2.name,
+        pricePoint: 600,
+        stock: 0, // Henüz hiçbir işletmede yok
+        imageUrl: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=400',
+        businessId: null, // Admin tarafından yönetiliyor
+        isGlobal: true
+      },
+      {
+        name: 'Ahşap Kesme Tahtası',
+        description: 'Doğal ahşap kesme tahtası',
+        collectionId: collection2._id,
+        collectionName: collection2.name,
+        pricePoint: 1200,
+        stock: 0,
+        imageUrl: 'https://images.unsplash.com/photo-1565183928294-7d22f2d8c29b?w=400',
+        businessId: null,
+        isGlobal: true
+      },
+      {
+        name: 'Ahşap Servis Tepsisi',
+        description: 'El işçiliği ahşap servis tepsisi',
+        collectionId: collection2._id,
+        collectionName: collection2.name,
+        pricePoint: 900,
+        stock: 0,
+        imageUrl: 'https://images.unsplash.com/photo-1595435742656-5272d0b3fa82?w=400',
+        businessId: null,
+        isGlobal: true
+      },
+      // Cam Koleksiyonu (henüz hiçbir işletmeye ait değil)
+      {
+        name: 'El Üflemesi Cam Vazo',
+        description: 'Özel tasarım cam vazo',
+        collectionId: collection3._id,
+        collectionName: collection3.name,
+        pricePoint: 1500,
+        stock: 0,
+        imageUrl: 'https://images.unsplash.com/photo-1525974160448-038dacadcc71?w=400',
+        businessId: null,
+        isGlobal: true
+      },
+      {
+        name: 'Cam Bardak Seti',
+        description: 'El yapımı cam bardak seti (6 adet)',
+        collectionId: collection3._id,
+        collectionName: collection3.name,
+        pricePoint: 800,
+        stock: 0,
+        imageUrl: 'https://images.unsplash.com/photo-1572635148818-ef6fd45eb394?w=400',
+        businessId: null,
+        isGlobal: true
+      },
+      {
+        name: 'Cam Sürahi',
+        description: 'Dekoratif cam sürahi',
+        collectionId: collection3._id,
+        collectionName: collection3.name,
+        pricePoint: 1000,
+        stock: 0,
+        imageUrl: 'https://images.unsplash.com/photo-1584627904094-beb5c4e15f8e?w=400',
+        businessId: null,
+        isGlobal: true
       }
     ]);
     console.log('🎁 Point Products created');

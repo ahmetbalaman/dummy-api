@@ -333,6 +333,17 @@ router.get('/products-point', async (req, res) => {
   }
 });
 
+// Get all products (from all collections) - for new collection ordering
+router.get('/products-point/all', async (req, res) => {
+  try {
+    const products = await ProductPoint.find()
+      .populate('collectionId', 'name imageUrl');
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/products-point', async (req, res) => {
   try {
     const collection = await Collection.findById(req.body.collectionId);
