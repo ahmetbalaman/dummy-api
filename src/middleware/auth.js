@@ -23,6 +23,17 @@ exports.protect = async (req, res, next) => {
       user = await Admin.findById(decoded.id).select('-password');
     } else if (decoded.role === 'business') {
       user = await Business.findById(decoded.id).select('-password');
+      
+      // İşletme aktif mi kontrol et - HEMEN çıkış yap, başka işlem yapma
+      if (user && !user.isActive) {
+        return res.status(403).json({ 
+          error: 'Business deactivated',
+          message: 'İşletmeniz devre dışı bırakılmıştır. Lütfen destek ekibiyle iletişime geçin.',
+          supportPhone: '+90 555 123 4567',
+          supportEmail: 'destek@sistem.com',
+          deactivated: true
+        });
+      }
     } else if (decoded.role === 'user') {
       user = await User.findById(decoded.id);
     }

@@ -66,6 +66,17 @@ router.post('/business', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // İşletme aktif mi kontrol et - TOKEN DÖNMEDEN ÖNCE!
+    if (!business.isActive) {
+      return res.status(403).json({ 
+        error: 'Business deactivated',
+        message: 'İşletmeniz devre dışı bırakılmıştır. Lütfen destek ekibiyle iletişime geçin.',
+        supportPhone: '+90 555 123 4567',
+        supportEmail: 'destek@sistem.com',
+        deactivated: true
+      });
+    }
+
     const token = generateToken(business._id, 'business');
 
     res.json({
