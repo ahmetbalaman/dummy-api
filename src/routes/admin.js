@@ -563,6 +563,94 @@ router.patch('/shipments/:id', async (req, res) => {
   }
 });
 
+// Orders - TL Orders
+router.get('/orders-tl', async (req, res) => {
+  try {
+    const { businessId, status } = req.query;
+    const query = {};
+    if (businessId) query.businessId = businessId;
+    if (status) query.status = status;
+    
+    const orders = await OrderTL.find(query)
+      .populate('businessId', 'name')
+      .populate('userId', 'name phone')
+      .populate('items.productId', 'name')
+      .sort('-createdAt');
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Orders - Point Orders
+router.get('/orders-point', async (req, res) => {
+  try {
+    const { businessId, status } = req.query;
+    const query = {};
+    if (businessId) query.businessId = businessId;
+    if (status) query.status = status;
+    
+    const orders = await OrderPoint.find(query)
+      .populate('businessId', 'name')
+      .populate('userId', 'name phone')
+      .populate('items.productId', 'name')
+      .sort('-createdAt');
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update order status - TL
+router.patch('/orders-tl/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const order = await OrderTL.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, runValidators: true }
+    ).populate('businessId', 'name').populate('userId', 'name');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    await logger.system(`TL Sipariş durumu güncellendi: ${order._id} - ${status}`, 'info', {
+      metadata: { orderId: order._id, status, businessId: order.businessId },
+      ipAddress: req.ip
+    });
+    
+    res.json(order);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Update order status - Point
+router.patch('/orders-point/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const order = await OrderPoint.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, runValidators: true }
+    ).populate('businessId', 'name').populate('userId', 'name');
+    
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    await logger.system(`Point Sipariş durumu güncellendi: ${order._id} - ${status}`, 'info', {
+      metadata: { orderId: order._id, status, businessId: order.businessId },
+      ipAddress: req.ip
+    });
+    
+    res.json(order);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // System stats
 router.get('/system', async (req, res) => {
   try {
