@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node src/scripts/seed.js",
+    "cleanup:logs": "node src/scripts/cleanupLogs.js",
     "test": "./test-api.sh",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",

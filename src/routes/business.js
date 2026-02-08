@@ -9,6 +9,7 @@ const ProductPoint = require('../models/ProductPoint');
 const OrderTL = require('../models/OrderTL');
 const OrderPoint = require('../models/OrderPoint');
 const Shipment = require('../models/Shipment');
+const Log = require('../models/Log');
 
 // All business routes require authentication
 router.use(protect, restrictTo('business'));
@@ -84,6 +85,19 @@ router.delete('/categories/:id', async (req, res) => {
     if (!category) {
       return res.status(404).json({ error: 'Category not found' });
     }
+
+    // Log kaydı
+    await Log.create({
+      level: 'warning',
+      category: 'business',
+      message: `Kategori silindi: ${category.name}`,
+      businessId: req.businessId,
+      metadata: {
+        categoryId: category._id,
+        categoryName: category.name
+      }
+    });
+
     res.json({ message: 'Category deleted', category });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -137,6 +151,19 @@ router.delete('/collections/:id', async (req, res) => {
     if (!collection) {
       return res.status(404).json({ error: 'Collection not found' });
     }
+
+    // Log kaydı
+    await Log.create({
+      level: 'warning',
+      category: 'collection',
+      message: `Koleksiyon silindi: ${collection.name}`,
+      businessId: req.businessId,
+      metadata: {
+        collectionId: collection._id,
+        collectionName: collection.name
+      }
+    });
+
     res.json({ message: 'Collection deleted', collection });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -170,6 +197,8 @@ router.post('/products-tl', async (req, res) => {
 
 router.put('/products-tl/:id', async (req, res) => {
   try {
+    const oldProduct = await ProductTL.findOne({ _id: req.params.id, businessId: req.businessId });
+    
     const product = await ProductTL.findOneAndUpdate(
       { _id: req.params.id, businessId: req.businessId },
       req.body,
@@ -178,6 +207,28 @@ router.put('/products-tl/:id', async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
+
+    // Log kaydı - değişiklikleri kaydet
+    const changes = [];
+    if (oldProduct.name !== product.name) changes.push(`İsim: ${oldProduct.name} → ${product.name}`);
+    if (oldProduct.priceTL !== product.priceTL) changes.push(`Fiyat: ₺${oldProduct.priceTL} → ₺${product.priceTL}`);
+    if (oldProduct.earnedPoints !== product.earnedPoints) changes.push(`Kazanılan Puan: ${oldProduct.earnedPoints || 0} → ${product.earnedPoints || 0}`);
+    if (oldProduct.isActive !== product.isActive) changes.push(`Durum: ${oldProduct.isActive ? 'Aktif' : 'Pasif'} → ${product.isActive ? 'Aktif' : 'Pasif'}`);
+    
+    if (changes.length > 0) {
+      await Log.create({
+        level: 'info',
+        category: 'business',
+        message: `Ürün güncellendi: ${product.name}`,
+        businessId: req.businessId,
+        metadata: {
+          productId: product._id,
+          productName: product.name,
+          changes: changes
+        }
+      });
+    }
+
     res.json(product);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -193,6 +244,21 @@ router.delete('/products-tl/:id', async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
+
+    // Log kaydı
+    await Log.create({
+      level: 'warning',
+      category: 'business',
+      message: `Ürün silindi: ${product.name}`,
+      businessId: req.businessId,
+      metadata: {
+        productId: product._id,
+        productName: product.name,
+        priceTL: product.priceTL,
+        categoryName: product.categoryName
+      }
+    });
+
     res.json({ message: 'Product deleted', product });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -262,6 +328,8 @@ router.post('/products-point', async (req, res) => {
 
 router.put('/products-point/:id', async (req, res) => {
   try {
+    const oldProduct = await ProductPoint.findOne({ _id: req.params.id, businessId: req.businessId });
+    
     const product = await ProductPoint.findOneAndUpdate(
       { _id: req.params.id, businessId: req.businessId },
       req.body,
@@ -270,12 +338,84 @@ router.put('/products-point/:id', async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
+
+    // Log kaydı - değişiklikleri kaydet
+    const changes = [];
+    if (oldProduct.name !== product.name) changes.push(`İsim: ${oldProduct.name} → ${product.name}`);
+    if (oldProduct.pricePoint !== product.pricePoint) changes.push(`Puan: ${oldProduct.pricePoint} → ${product.pricePoint}`);
+    if (oldProduct.isActive !== product.isActive) changes.push(`Durum: ${oldProduct.isActive ? 'Aktif' : 'Pasif'} → ${product.isActive ? 'Aktif' : 'Pasif'}`);
+    
+    if (changes.length > 0) {
+      await Log.create({
+        level: 'info',
+        category: 'collection',
+        message: `Puan ürünü güncellendi: ${product.name}`,
+        businessId: req.businessId,
+        metadata: {
+          productId: product._id,
+          productName: product.name,
+          changes: changes
+        }
+      });
+    }
+
     res.json(product);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
+// Update product stock
+router.patch('/products-point/:id/stock', async (req, res) => {
+  try {
+    const { stockChange } = req.body;
+    
+    if (typeof stockChange !== 'number') {
+      return res.status(400).json({ error: 'stockChange must be a number' });
+    }
+
+    const product = await ProductPoint.findOne({
+      _id: req.params.id,
+      businessId: req.businessId
+    });
+
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    product.stock = (product.stock || 0) + stockChange;
+    
+    // Stok negatif olamaz
+    if (product.stock < 0) {
+      return res.status(400).json({ error: 'Stock cannot be negative' });
+    }
+
+    await product.save();
+
+    // Log kaydı
+    await Log.create({
+      level: 'info',
+      category: 'collection',
+      message: `${product.name} için stok güncellendi: ${stockChange > 0 ? '+' : ''}${stockChange}`,
+      businessId: req.businessId,
+      metadata: {
+        productId: product._id,
+        productName: product.name,
+        oldStock: product.stock - stockChange,
+        newStock: product.stock,
+        change: stockChange
+      }
+    });
+
+    res.json(product);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ProductPoint silme işlemi devre dışı - koleksiyon ürünleri korunmalı
+// İşletmeler koleksiyon ürünlerini silemez, sadece stok güncelleyebilir
+/*
 router.delete('/products-point/:id', async (req, res) => {
   try {
     const product = await ProductPoint.findOneAndDelete({
@@ -285,11 +425,25 @@ router.delete('/products-point/:id', async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
+
+    // Log kaydı
+    await Log.create({
+      level: 'warning',
+      category: 'collection',
+      message: `ProductPoint deleted: ${product.name}`,
+      businessId: req.businessId,
+      metadata: {
+        productId: product._id,
+        productName: product.name
+      }
+    });
+
     res.json({ message: 'Product deleted', product });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
+*/
 
 // Point Product Stock Management
 router.patch('/products-point/:id/stock', async (req, res) => {
@@ -381,10 +535,29 @@ router.get('/orders-point', async (req, res) => {
   }
 });
 
+router.patch('/orders-point/:id', async (req, res) => {
+  try {
+    const order = await OrderPoint.findOneAndUpdate(
+      { _id: req.params.id, businessId: req.businessId },
+      { status: req.body.status },
+      { new: true }
+    );
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    res.json(order);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Shipments
 router.get('/shipments', async (req, res) => {
   try {
-    const shipments = await Shipment.find({ businessId: req.businessId })
+    const shipments = await Shipment.find({ 
+      businessId: req.businessId,
+      type: 'admin' // Sadece admin'den gelen kargolar
+    })
       .populate('collectionSetId', 'name description')
       .sort('-createdAt');
     res.json(shipments);
@@ -395,14 +568,60 @@ router.get('/shipments', async (req, res) => {
 
 router.patch('/shipments/:id/confirm', async (req, res) => {
   try {
-    const shipment = await Shipment.findOneAndUpdate(
-      { _id: req.params.id, businessId: req.businessId },
-      { status: 'delivered', deliveredAt: new Date() },
-      { new: true }
-    );
+    const shipment = await Shipment.findOne(
+      { _id: req.params.id, businessId: req.businessId }
+    ).populate('collectionSetId');
+    
     if (!shipment) {
       return res.status(404).json({ error: 'Shipment not found' });
     }
+
+    if (shipment.status === 'delivered') {
+      return res.status(400).json({ error: 'Shipment already delivered' });
+    }
+
+    // Kargo onaylandı - ürünleri stoğa ekle
+    let updatedProducts = [];
+    if (shipment.products && shipment.products.length > 0) {
+      for (const item of shipment.products) {
+        // Ürünü isme göre bul (productId olmayabilir)
+        const product = await ProductPoint.findOne({
+          name: item.name,
+          businessId: req.businessId
+        });
+
+        if (product) {
+          product.stock = (product.stock || 0) + item.quantity;
+          await product.save();
+          updatedProducts.push({
+            name: product.name,
+            oldStock: product.stock - item.quantity,
+            newStock: product.stock,
+            added: item.quantity
+          });
+        }
+      }
+    }
+
+    // Shipment durumunu güncelle
+    shipment.status = 'delivered';
+    shipment.deliveredAt = new Date();
+    await shipment.save();
+
+    // Log kaydı
+    await Log.create({
+      level: 'success',
+      category: 'shipment',
+      message: `Kargo teslim alındı: ${shipment.collectionSetId?.name || 'Koleksiyon Seti'}`,
+      businessId: req.businessId,
+      metadata: {
+        shipmentId: shipment._id,
+        trackingNumber: shipment.trackingNumber,
+        totalItems: shipment.products.reduce((sum, p) => sum + p.quantity, 0),
+        updatedProducts: updatedProducts
+      }
+    });
+
     res.json(shipment);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -458,6 +677,93 @@ router.post('/qr', async (req, res) => {
       qrCode,
       businessId: req.businessId,
       expiresAt
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Restock Orders - İşletmeden admin'e ürün siparişi
+router.post('/orders/restock', async (req, res) => {
+  try {
+    const { items } = req.body; // [{ productId, productName, quantity, pricePoint }]
+    
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: 'Items required' });
+    }
+
+    // Sipariş oluştur (Shipment olarak kaydet)
+    const shipment = await Shipment.create({
+      businessId: req.businessId,
+      type: 'restock', // Yeni alan: 'admin' veya 'restock'
+      status: 'pending',
+      products: items.map(item => ({
+        productId: item.productId,
+        name: item.productName,
+        quantity: item.quantity,
+        pricePoint: item.pricePoint
+      })),
+      trackingNumber: null
+    });
+
+    // Log kaydı
+    await Log.create({
+      level: 'info',
+      category: 'order',
+      message: `Stok siparişi oluşturuldu: ${items.reduce((sum, item) => sum + item.quantity, 0)} ürün`,
+      businessId: req.businessId,
+      metadata: {
+        shipmentId: shipment._id,
+        items: items.map(i => ({ name: i.productName, quantity: i.quantity })),
+        totalItems: items.reduce((sum, item) => sum + item.quantity, 0)
+      }
+    });
+    
+    res.json({ message: 'Restock order created', order: shipment });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Get restock orders
+router.get('/orders/restock', async (req, res) => {
+  try {
+    const orders = await Shipment.find({ 
+      businessId: req.businessId,
+      type: 'restock'
+    }).sort('-createdAt');
+    
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Logs - İşletme logları
+router.get('/logs', async (req, res) => {
+  try {
+    const { level, category, limit = 50, page = 1 } = req.query;
+    
+    const query = { businessId: req.businessId };
+    if (level) query.level = level;
+    if (category) query.category = category;
+
+    const logs = await Log.find(query)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .lean();
+
+    const total = await Log.countDocuments(query);
+
+    res.json({
+      logs,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

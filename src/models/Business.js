@@ -10,14 +10,22 @@ const businessSchema = new mongoose.Schema({
   phone: String,
   logoUrl: String,
   coverImageUrl: String,
+  location: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { type: [Number], default: [0, 0] }, // [longitude, latitude]
+    address: String,
+    city: String,
+    district: String,
+    postalCode: String
+  },
   workingHours: {
-    monday: { open: String, close: String },
-    tuesday: { open: String, close: String },
-    wednesday: { open: String, close: String },
-    thursday: { open: String, close: String },
-    friday: { open: String, close: String },
-    saturday: { open: String, close: String },
-    sunday: { open: String, close: String }
+    monday: { open: String, close: String, closed: { type: Boolean, default: false } },
+    tuesday: { open: String, close: String, closed: { type: Boolean, default: false } },
+    wednesday: { open: String, close: String, closed: { type: Boolean, default: false } },
+    thursday: { open: String, close: String, closed: { type: Boolean, default: false } },
+    friday: { open: String, close: String, closed: { type: Boolean, default: false } },
+    saturday: { open: String, close: String, closed: { type: Boolean, default: false } },
+    sunday: { open: String, close: String, closed: { type: Boolean, default: false } }
   },
   rating: { type: Number, default: 0 },
   totalReviews: { type: Number, default: 0 },
@@ -40,5 +48,6 @@ businessSchema.methods.comparePassword = async function(candidatePassword) {
 };
 
 businessSchema.index({ email: 1 });
+businessSchema.index({ 'location.coordinates': '2dsphere' }); // Geospatial index for nearby search
 
 module.exports = mongoose.model('Business', businessSchema);

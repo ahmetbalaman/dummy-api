@@ -47,6 +47,34 @@ router.get('/businesses', async (req, res) => {
   }
 });
 
+// Get nearby businesses (for "Yakınımdaki Restoranlar" feature)
+router.get('/businesses/nearby', async (req, res) => {
+  try {
+    const { lat, lng, maxDistance = 5000 } = req.query; // maxDistance in meters (default 5km)
+
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'Latitude and longitude are required' });
+    }
+
+    const businesses = await Business.find({
+      isActive: true,
+      'location.coordinates': {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [parseFloat(lng), parseFloat(lat)]
+          },
+          $maxDistance: parseInt(maxDistance)
+        }
+      }
+    }).select('-password -createdAt -updatedAt');
+
+    res.json(businesses);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get business details
 router.get('/businesses/:id', async (req, res) => {
   try {

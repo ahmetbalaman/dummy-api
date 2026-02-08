@@ -99,12 +99,21 @@ const seedDatabase = async () => {
     const cat1 = await Category.create({
       name: 'Sıcak İçecekler',
       iconUrl: 'https://api.dicebear.com/7.x/icons/svg?seed=hot',
+      imageUrl: 'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=400',
       businessId: business1._id
     });
 
     const cat2 = await Category.create({
       name: 'Tatlılar',
       iconUrl: 'https://api.dicebear.com/7.x/icons/svg?seed=dessert',
+      imageUrl: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400',
+      businessId: business1._id
+    });
+
+    const cat3 = await Category.create({
+      name: 'Soğuk İçecekler',
+      iconUrl: 'https://api.dicebear.com/7.x/icons/svg?seed=cold',
+      imageUrl: 'https://images.unsplash.com/photo-1546173159-315724a31696?w=400',
       businessId: business1._id
     });
     console.log('📁 Categories created');
@@ -206,10 +215,34 @@ const seedDatabase = async () => {
       ],
       totalItems: 20
     });
+
+    const collectionSet2 = await CollectionSet.create({
+      name: 'Seramik Koleksiyonu - Set B',
+      description: 'Premium seramik ürün seti',
+      category: 'Seramik',
+      imageUrl: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400',
+      products: [
+        { 
+          productName: 'El Yapımı Seramik Kupa', 
+          quantity: 15, 
+          pricePoint: 500,
+          imageUrl: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400'
+        },
+        { 
+          productName: 'Seramik Tabak', 
+          quantity: 10, 
+          pricePoint: 800,
+          imageUrl: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=400'
+        }
+      ],
+      totalItems: 25
+    });
     console.log('📦 Collection Sets created');
 
-    // Create Shipment
+    // Create Shipments
+    // Teslim edilmiş kargo
     await Shipment.create({
+      type: 'admin',
       collectionSetId: collectionSet1._id,
       collectionSetName: collectionSet1.name,
       businessId: business1._id,
@@ -220,9 +253,37 @@ const seedDatabase = async () => {
       trackingNumber: 'TRK123456789',
       shippingCompany: 'Aras Kargo',
       totalItems: 20,
-      products: collectionSet1.products,
+      products: collectionSet1.products.map(p => ({
+        productId: null,
+        name: p.productName,
+        quantity: p.quantity,
+        pricePoint: p.pricePoint
+      })),
       shippedAt: new Date('2026-02-01T09:00:00Z'),
       deliveredAt: new Date('2026-02-03T14:30:00Z')
+    });
+
+    // Yolda olan kargo - Test için
+    await Shipment.create({
+      type: 'admin',
+      collectionSetId: collectionSet2._id,
+      collectionSetName: collectionSet2.name,
+      businessId: business1._id,
+      businessName: business1.name,
+      businessAddress: business1.address,
+      businessPhone: business1.phone,
+      status: 'in_transit',
+      trackingNumber: 'TRK987654321',
+      shippingCompany: 'Yurtiçi Kargo',
+      totalItems: 25,
+      products: collectionSet2.products.map(p => ({
+        productId: null,
+        name: p.productName,
+        quantity: p.quantity,
+        pricePoint: p.pricePoint
+      })),
+      shippedAt: new Date('2026-02-07T10:00:00Z'),
+      estimatedDeliveryAt: new Date('2026-02-10T18:00:00Z')
     });
     console.log('🚚 Shipments created');
 

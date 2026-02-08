@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 
 const shipmentSchema = new mongoose.Schema({
-  collectionSetId: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectionSet', required: true },
+  type: { type: String, enum: ['admin', 'restock'], default: 'admin' }, // admin: admin'den gelen kargo, restock: işletmeden admin'e sipariş
+  collectionSetId: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectionSet' }, // restock için opsiyonel
   collectionSetName: String,
   businessId: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', required: true },
   businessName: String,
@@ -10,10 +11,10 @@ const shipmentSchema = new mongoose.Schema({
   status: { type: String, enum: ['pending', 'in_transit', 'delivered', 'cancelled'], default: 'pending' },
   trackingNumber: String,
   shippingCompany: String,
-  totalItems: { type: Number, required: true },
+  totalItems: { type: Number },
   products: [{
     productId: String,
-    productName: String,
+    name: String, // productName yerine name
     quantity: Number,
     pricePoint: Number
   }],
