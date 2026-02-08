@@ -114,6 +114,27 @@ router.get('/collections', async (req, res) => {
   }
 });
 
+// Get all available collections (for ordering new ones)
+router.get('/collections/available', async (req, res) => {
+  try {
+    // Tüm koleksiyonları getir
+    const allCollections = await Collection.find({});
+    
+    // İşletmenin mevcut koleksiyonlarını getir
+    const businessCollections = await Collection.find({ businessId: req.businessId });
+    const businessCollectionIds = businessCollections.map(c => c._id.toString());
+    
+    // İşletmede olmayan koleksiyonları filtrele
+    const availableCollections = allCollections.filter(c => 
+      !businessCollectionIds.includes(c._id.toString())
+    );
+    
+    res.json(availableCollections);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/collections', async (req, res) => {
   try {
     const collection = await Collection.create({
