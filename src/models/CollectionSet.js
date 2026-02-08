@@ -4,10 +4,13 @@ const collectionSetSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: String,
   category: String,
+  imageUrl: String,
   products: [{
+    productId: String,
     productName: String,
     quantity: Number,
-    pricePoint: Number
+    pricePoint: Number,
+    imageUrl: String
   }],
   totalItems: { type: Number, required: true },
   isActive: { type: Boolean, default: true }

@@ -11,6 +11,7 @@ const CollectionSet = require('../models/CollectionSet');
 const Shipment = require('../models/Shipment');
 const OrderTL = require('../models/OrderTL');
 const Loyalty = require('../models/Loyalty');
+const Log = require('../models/Log');
 
 const seedDatabase = async () => {
   try {
@@ -32,7 +33,8 @@ const seedDatabase = async () => {
       CollectionSet.deleteMany({}),
       Shipment.deleteMany({}),
       OrderTL.deleteMany({}),
-      Loyalty.deleteMany({})
+      Loyalty.deleteMany({}),
+      Log.deleteMany({})
     ]);
     console.log('🗑️  Cleared existing data');
 
@@ -181,10 +183,26 @@ const seedDatabase = async () => {
       name: 'Seramik Koleksiyonu - Set A',
       description: 'Temel seramik ürün seti',
       category: 'Seramik',
+      imageUrl: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400',
       products: [
-        { productName: 'El Yapımı Seramik Kupa', quantity: 10, pricePoint: 500 },
-        { productName: 'Seramik Tabak', quantity: 5, pricePoint: 800 },
-        { productName: 'Seramik Kase', quantity: 5, pricePoint: 600 }
+        { 
+          productName: 'El Yapımı Seramik Kupa', 
+          quantity: 10, 
+          pricePoint: 500,
+          imageUrl: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400'
+        },
+        { 
+          productName: 'Seramik Tabak', 
+          quantity: 5, 
+          pricePoint: 800,
+          imageUrl: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=400'
+        },
+        { 
+          productName: 'Seramik Kase', 
+          quantity: 5, 
+          pricePoint: 600,
+          imageUrl: 'https://images.unsplash.com/photo-1578500494198-246f612d3b3d?w=400'
+        }
       ],
       totalItems: 20
     });
@@ -236,6 +254,87 @@ const seedDatabase = async () => {
       pointsEarned: Math.floor(products[0].priceTL * 2 * 0.1)
     });
     console.log('🛒 Sample orders created');
+
+    // Create Sample Logs
+    const now = new Date();
+    const sampleLogs = [];
+    
+    // Son 60 günden loglar (bazıları 30 günden eski olacak)
+    for (let i = 0; i < 50; i++) {
+      const daysAgo = Math.floor(Math.random() * 60); // 0-60 gün arası
+      const logDate = new Date(now);
+      logDate.setDate(logDate.getDate() - daysAgo);
+      logDate.setHours(Math.floor(Math.random() * 24));
+      logDate.setMinutes(Math.floor(Math.random() * 60));
+      
+      const levels = ['info', 'warning', 'error', 'success'];
+      const categories = ['auth', 'business', 'collection', 'shipment', 'order', 'system', 'api'];
+      const level = levels[Math.floor(Math.random() * levels.length)];
+      const category = categories[Math.floor(Math.random() * categories.length)];
+      
+      const messages = {
+        auth: [
+          'Kullanıcı giriş yaptı',
+          'Başarısız giriş denemesi',
+          'Token yenilendi',
+          'Kullanıcı çıkış yaptı'
+        ],
+        business: [
+          'Yeni işletme oluşturuldu',
+          'İşletme bilgileri güncellendi',
+          'İşletme durumu değiştirildi',
+          'İşletme silindi'
+        ],
+        collection: [
+          'Yeni koleksiyon oluşturuldu',
+          'Koleksiyon güncellendi',
+          'Koleksiyon silindi',
+          'Koleksiyona ürün eklendi'
+        ],
+        shipment: [
+          'Yeni sevkiyat oluşturuldu',
+          'Sevkiyat durumu güncellendi',
+          'Sevkiyat teslim edildi',
+          'Sevkiyat iptal edildi'
+        ],
+        order: [
+          'Yeni sipariş alındı',
+          'Sipariş tamamlandı',
+          'Sipariş iptal edildi',
+          'Ödeme başarılı'
+        ],
+        system: [
+          'Sistem başlatıldı',
+          'Veritabanı bağlantısı kuruldu',
+          'Otomatik yedekleme tamamlandı',
+          'Sistem güncellemesi yapıldı'
+        ],
+        api: [
+          'API isteği başarılı',
+          'Rate limit aşıldı',
+          'API hatası oluştu',
+          'Yeni API endpoint eklendi'
+        ]
+      };
+      
+      const categoryMessages = messages[category];
+      const message = categoryMessages[Math.floor(Math.random() * categoryMessages.length)];
+      
+      sampleLogs.push({
+        level,
+        message,
+        category,
+        businessId: Math.random() > 0.5 ? business1._id : null,
+        userId: Math.random() > 0.5 ? user1._id : null,
+        ipAddress: `192.168.1.${Math.floor(Math.random() * 255)}`,
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+        createdAt: logDate,
+        updatedAt: logDate
+      });
+    }
+    
+    await Log.insertMany(sampleLogs);
+    console.log('📋 Sample logs created');
 
     console.log('\n✅ Database seeded successfully!');
     console.log('\n📝 Login credentials:');

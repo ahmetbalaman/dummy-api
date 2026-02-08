@@ -10,6 +10,8 @@ const ProductPoint = require('../models/ProductPoint');
 const Shipment = require('../models/Shipment');
 const OrderTL = require('../models/OrderTL');
 const OrderPoint = require('../models/OrderPoint');
+const Log = require('../models/Log');
+const { cleanOldLogs, getLogStats, logger } = require('../utils/logger');
 
 // All admin routes require authentication
 router.use(protect, restrictTo('admin'));
@@ -30,8 +32,20 @@ router.post('/businesses', async (req, res) => {
     const business = await Business.create(req.body);
     const businessData = business.toObject();
     delete businessData.password;
+    
+    // Log oluştur
+    await logger.business(`Yeni işletme oluşturuldu: ${business.name}`, 'success', {
+      businessId: business._id,
+      metadata: { name: business.name, email: business.email },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+    
     res.status(201).json(businessData);
   } catch (error) {
+    await logger.business(`İşletme oluşturma hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -61,8 +75,17 @@ router.put('/businesses/:id', async (req, res) => {
     if (!business) {
       return res.status(404).json({ error: 'Business not found' });
     }
+    
+    await logger.business(`İşletme güncellendi: ${business.name}`, 'info', {
+      businessId: business._id,
+      ipAddress: req.ip
+    });
+    
     res.json(business);
   } catch (error) {
+    await logger.business(`İşletme güncelleme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -79,8 +102,17 @@ router.delete('/businesses/:id', async (req, res) => {
     if (!business) {
       return res.status(404).json({ error: 'Business not found' });
     }
+    
+    await logger.business(`İşletme silindi: ${business.name}`, 'warning', {
+      businessId: business._id,
+      ipAddress: req.ip
+    });
+    
     res.json({ message: 'Business deleted successfully', business: { id: business._id, name: business.name } });
   } catch (error) {
+    await logger.business(`İşletme silme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -95,12 +127,34 @@ router.get('/collection-sets', async (req, res) => {
   }
 });
 
+// Get single collection set
+router.get('/collection-sets/:id', async (req, res) => {
+  try {
+    const set = await CollectionSet.findById(req.params.id);
+    if (!set) {
+      return res.status(404).json({ error: 'Collection set not found' });
+    }
+    res.json(set);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create collection set
 router.post('/collection-sets', async (req, res) => {
   try {
     const set = await CollectionSet.create(req.body);
+    
+    await logger.collection(`Yeni koleksiyon oluşturuldu: ${set.name}`, 'success', {
+      metadata: { collectionId: set._id, name: set.name, totalItems: set.totalItems },
+      ipAddress: req.ip
+    });
+    
     res.status(201).json(set);
   } catch (error) {
+    await logger.collection(`Koleksiyon oluşturma hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -115,8 +169,17 @@ router.put('/collection-sets/:id', async (req, res) => {
     if (!set) {
       return res.status(404).json({ error: 'Collection set not found' });
     }
+    
+    await logger.collection(`Koleksiyon güncellendi: ${set.name}`, 'info', {
+      metadata: { collectionId: set._id, name: set.name },
+      ipAddress: req.ip
+    });
+    
     res.json(set);
   } catch (error) {
+    await logger.collection(`Koleksiyon güncelleme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -127,8 +190,17 @@ router.delete('/collection-sets/:id', async (req, res) => {
     if (!set) {
       return res.status(404).json({ error: 'Collection set not found' });
     }
+    
+    await logger.collection(`Koleksiyon silindi: ${set.name}`, 'warning', {
+      metadata: { collectionId: set._id, name: set.name },
+      ipAddress: req.ip
+    });
+    
     res.json({ message: 'Collection set deleted', set });
   } catch (error) {
+    await logger.collection(`Koleksiyon silme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -294,8 +366,17 @@ router.delete('/products-tl/:id', async (req, res) => {
 // Point Products (Admin can manage all products)
 router.get('/products-point', async (req, res) => {
   try {
-    const { businessId } = req.query;
-    const query = businessId ? { businessId } : {};
+    const { businessId, globalOnly } = req.query;
+    let query = {};
+    
+    if (globalOnly === 'true') {
+      // Sadece admin tarafından oluşturulan global ürünler
+      query.isGlobal = true;
+    } else if (businessId) {
+      // Belirli bir işletmenin ürünleri
+      query.businessId = businessId;
+    }
+    
     const products = await ProductPoint.find(query)
       .populate('businessId', 'name')
       .populate('collectionId', 'name')
@@ -308,13 +389,30 @@ router.get('/products-point', async (req, res) => {
 
 router.post('/products-point', async (req, res) => {
   try {
-    const collection = await Collection.findById(req.body.collectionId);
-    const product = await ProductPoint.create({
+    // Admin tarafından oluşturulan genel ürünler
+    const productData = {
       ...req.body,
-      collectionName: collection?.name
+      isGlobal: true // Admin ürünleri global olarak işaretle
+    };
+    
+    // Eğer collectionId varsa collection name'i al
+    if (req.body.collectionId) {
+      const collection = await Collection.findById(req.body.collectionId);
+      productData.collectionName = collection?.name;
+    }
+    
+    const product = await ProductPoint.create(productData);
+    
+    await logger.system(`Yeni ürün oluşturuldu: ${product.name}`, 'success', {
+      metadata: { productId: product._id, name: product.name, pricePoint: product.pricePoint },
+      ipAddress: req.ip
     });
+    
     res.status(201).json(product);
   } catch (error) {
+    await logger.system(`Ürün oluşturma hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -329,8 +427,17 @@ router.put('/products-point/:id', async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
+    
+    await logger.system(`Ürün güncellendi: ${product.name}`, 'info', {
+      metadata: { productId: product._id, name: product.name },
+      ipAddress: req.ip
+    });
+    
     res.json(product);
   } catch (error) {
+    await logger.system(`Ürün güncelleme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -341,8 +448,17 @@ router.delete('/products-point/:id', async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
+    
+    await logger.system(`Ürün silindi: ${product.name}`, 'warning', {
+      metadata: { productId: product._id, name: product.name },
+      ipAddress: req.ip
+    });
+    
     res.json({ message: 'Product deleted', product });
   } catch (error) {
+    await logger.system(`Ürün silme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -380,8 +496,26 @@ router.post('/shipments', async (req, res) => {
       businessPhone: business.phone
     });
 
+    await logger.shipment(
+      `Yeni sevkiyat oluşturuldu: ${collectionSet.name} → ${business.name}`, 
+      'success', 
+      {
+        businessId: business._id,
+        metadata: { 
+          shipmentId: shipment._id, 
+          collectionName: collectionSet.name,
+          businessName: business.name,
+          totalItems: shipment.totalItems 
+        },
+        ipAddress: req.ip
+      }
+    );
+
     res.status(201).json(shipment);
   } catch (error) {
+    await logger.shipment(`Sevkiyat oluşturma hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -398,8 +532,33 @@ router.patch('/shipments/:id', async (req, res) => {
     if (!shipment) {
       return res.status(404).json({ error: 'Shipment not found' });
     }
+    
+    const statusText = {
+      pending: 'Hazırlanıyor',
+      in_transit: 'Yolda',
+      delivered: 'Teslim Edildi',
+      cancelled: 'İptal Edildi'
+    }[shipment.status] || shipment.status;
+    
+    await logger.shipment(
+      `Sevkiyat durumu güncellendi: ${shipment.collectionSetName} - ${statusText}`, 
+      shipment.status === 'delivered' ? 'success' : 'info',
+      {
+        businessId: shipment.businessId,
+        metadata: { 
+          shipmentId: shipment._id,
+          status: shipment.status,
+          trackingNumber: shipment.trackingNumber
+        },
+        ipAddress: req.ip
+      }
+    );
+    
     res.json(shipment);
   } catch (error) {
+    await logger.shipment(`Sevkiyat güncelleme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(400).json({ error: error.message });
   }
 });
@@ -433,15 +592,84 @@ router.get('/system', async (req, res) => {
   }
 });
 
-// Logs (placeholder - implement based on your logging strategy)
+// Logs - Gelişmiş log sistemi
 router.get('/logs', async (req, res) => {
   try {
-    // This would typically query a logging collection or service
+    const { level, category, search, limit = 100, page = 1 } = req.query;
+    
+    // Query oluştur
+    const query = {};
+    if (level) query.level = level;
+    if (category) query.category = category;
+    if (search) {
+      query.message = { $regex: search, $options: 'i' };
+    }
+    
+    // Pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const [logs, total] = await Promise.all([
+      Log.find(query)
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .skip(skip)
+        .lean(),
+      Log.countDocuments(query)
+    ]);
+    
     res.json({
-      logs: [],
-      message: 'Logging system not yet implemented'
+      logs,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      }
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Log istatistikleri
+router.get('/logs/stats', async (req, res) => {
+  try {
+    const stats = await getLogStats();
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eski logları temizle
+router.delete('/logs/cleanup', async (req, res) => {
+  try {
+    const { days = 30 } = req.query;
+    const daysNum = parseInt(days);
+    const deletedCount = await cleanOldLogs(daysNum);
+    
+    await logger.system(
+      daysNum === 0 
+        ? `Tüm loglar temizlendi: ${deletedCount} kayıt`
+        : `${daysNum} günden eski loglar temizlendi: ${deletedCount} kayıt`,
+      'warning',
+      {
+        metadata: { deletedCount, days: daysNum },
+        ipAddress: req.ip
+      }
+    );
+    
+    res.json({ 
+      message: daysNum === 0 
+        ? `Tüm loglar silindi: ${deletedCount} kayıt`
+        : `${deletedCount} log silindi (${daysNum} günden eski)`,
+      deletedCount,
+      days: daysNum
+    });
+  } catch (error) {
+    await logger.system(`Log temizleme hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(500).json({ error: error.message });
   }
 });

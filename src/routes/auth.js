@@ -5,6 +5,7 @@ const Business = require('../models/Business');
 const User = require('../models/User');
 const { generateToken } = require('../utils/jwt');
 const { verifyGoogleToken, verifyAppleToken } = require('../utils/oauth');
+const { logger } = require('../utils/logger');
 
 // Admin login
 router.post('/admin', async (req, res) => {
@@ -17,10 +18,21 @@ router.post('/admin', async (req, res) => {
 
     const admin = await Admin.findOne({ email });
     if (!admin || !(await admin.comparePassword(password))) {
+      await logger.auth(`Başarısız admin giriş denemesi: ${email}`, 'warning', {
+        metadata: { email },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent')
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = generateToken(admin._id, 'admin');
+
+    await logger.auth(`Admin giriş yaptı: ${admin.email}`, 'success', {
+      metadata: { adminId: admin._id, email: admin.email },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
 
     res.json({
       token,
@@ -33,6 +45,9 @@ router.post('/admin', async (req, res) => {
     });
   } catch (error) {
     console.error('Admin login error:', error);
+    await logger.auth(`Admin giriş hatası: ${error.message}`, 'error', {
+      ipAddress: req.ip
+    });
     res.status(500).json({ error: 'Login failed' });
   }
 });
