@@ -106,16 +106,30 @@ router.post('/google', async (req, res) => {
 
     const googleData = await verifyGoogleToken(idToken);
 
+    // First try to find by providerId and provider
     let user = await User.findOne({ providerId: googleData.providerId, provider: 'google' });
 
+    // If not found, check if user exists with same email (from different provider)
     if (!user) {
-      user = await User.create({
-        name: googleData.name,
-        email: googleData.email,
-        avatarUrl: googleData.avatarUrl,
-        provider: 'google',
-        providerId: googleData.providerId
-      });
+      user = await User.findOne({ email: googleData.email });
+      
+      if (user) {
+        // Update existing user with Google provider info
+        user.provider = 'google';
+        user.providerId = googleData.providerId;
+        user.avatarUrl = googleData.avatarUrl || user.avatarUrl;
+        user.name = googleData.name || user.name;
+        await user.save();
+      } else {
+        // Create new user
+        user = await User.create({
+          name: googleData.name,
+          email: googleData.email,
+          avatarUrl: googleData.avatarUrl,
+          provider: 'google',
+          providerId: googleData.providerId
+        });
+      }
     }
 
     const token = generateToken(user._id, 'user');
@@ -149,15 +163,28 @@ router.post('/apple', async (req, res) => {
 
     const appleData = await verifyAppleToken(identityToken);
 
+    // First try to find by providerId and provider
     let user = await User.findOne({ providerId: appleData.providerId, provider: 'apple' });
 
+    // If not found, check if user exists with same email (from different provider)
     if (!user) {
-      user = await User.create({
-        name: appleData.name,
-        email: appleData.email,
-        provider: 'apple',
-        providerId: appleData.providerId
-      });
+      user = await User.findOne({ email: appleData.email });
+      
+      if (user) {
+        // Update existing user with Apple provider info
+        user.provider = 'apple';
+        user.providerId = appleData.providerId;
+        user.name = appleData.name || user.name;
+        await user.save();
+      } else {
+        // Create new user
+        user = await User.create({
+          name: appleData.name,
+          email: appleData.email,
+          provider: 'apple',
+          providerId: appleData.providerId
+        });
+      }
     }
 
     const token = generateToken(user._id, 'user');
@@ -176,6 +203,48 @@ router.post('/apple', async (req, res) => {
     });
   } catch (error) {
     console.error('Apple auth error:', error);
+    res.status(500).json({ error: error.message || 'Authentication failed' });
+  }
+});
+
+// Debug login (Development only - bypasses OAuth)
+router.post('/debug-login', async (req, res) => {
+  try {
+    // Only allow in development
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ error: 'Debug login not available in production' });
+    }
+
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email required' });
+    }
+
+    // Find or create test user
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found. Please run seed script first.' });
+    }
+
+    const token = generateToken(user._id, 'user');
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        role: 'user',
+        provider: user.provider,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        phone: user.phone,
+        loyaltyPoints: user.loyaltyPoints
+      }
+    });
+  } catch (error) {
+    console.error('Debug login error:', error);
     res.status(500).json({ error: error.message || 'Authentication failed' });
   }
 });

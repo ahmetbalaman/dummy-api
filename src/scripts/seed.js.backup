@@ -182,28 +182,28 @@ const seedDatabase = async () => {
     });
     console.log('📁 Categories created');
 
-    // Create Collections
+    // Create Global Collections (Admin creates these)
     const collection1 = await Collection.create({
       name: 'Seramik Koleksiyonu',
       description: 'El yapımı seramik ürünler',
       imageUrl: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400',
-      businessId: business1._id
+      isGlobal: true
     });
 
     const collection2 = await Collection.create({
       name: 'Ahşap Koleksiyonu',
       description: 'Doğal ahşap ürünler',
       imageUrl: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=400',
-      businessId: business1._id
+      isGlobal: true
     });
 
     const collection3 = await Collection.create({
       name: 'Cam Koleksiyonu',
       description: 'El işçiliği cam ürünler',
       imageUrl: 'https://images.unsplash.com/photo-1525974160448-038dacadcc71?w=400',
-      businessId: business1._id
+      isGlobal: true
     });
-    console.log('🎨 Collections created');
+    console.log('🎨 Global Collections created');
 
     // Create TL Products - LOTS OF THEM WITH OPTIONS!
     const tlProducts = [];
@@ -1086,55 +1086,39 @@ const seedDatabase = async () => {
     ]);
     console.log('🎁 Point Products created');
 
+    // Get created products for CollectionSet
+    const seramikProducts = await ProductPoint.find({ collectionId: collection1._id });
+    const ahsapProducts = await ProductPoint.find({ collectionId: collection2._id });
+
     // Create Collection Sets
     const collectionSet1 = await CollectionSet.create({
       name: 'Seramik Koleksiyonu - Set A',
       description: 'Temel seramik ürün seti',
       category: 'Seramik',
       imageUrl: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400',
-      products: [
-        { 
-          productName: 'El Yapımı Seramik Kupa', 
-          quantity: 10, 
-          pricePoint: 500,
-          imageUrl: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400'
-        },
-        { 
-          productName: 'Seramik Tabak', 
-          quantity: 5, 
-          pricePoint: 800,
-          imageUrl: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=400'
-        },
-        { 
-          productName: 'Seramik Kase', 
-          quantity: 5, 
-          pricePoint: 600,
-          imageUrl: 'https://images.unsplash.com/photo-1578500494198-246f612d3b3d?w=400'
-        }
-      ],
+      products: seramikProducts.slice(0, 2).map(p => ({
+        productId: p._id.toString(),
+        productName: p.name,
+        quantity: 10,
+        pricePoint: p.pricePoint,
+        imageUrl: p.imageUrl
+      })),
       totalItems: 20
     });
 
     const collectionSet2 = await CollectionSet.create({
-      name: 'Seramik Koleksiyonu - Set B',
-      description: 'Premium seramik ürün seti',
-      category: 'Seramik',
-      imageUrl: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=400',
-      products: [
-        { 
-          productName: 'El Yapımı Seramik Kupa', 
-          quantity: 15, 
-          pricePoint: 500,
-          imageUrl: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400'
-        },
-        { 
-          productName: 'Seramik Tabak', 
-          quantity: 10, 
-          pricePoint: 800,
-          imageUrl: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=400'
-        }
-      ],
-      totalItems: 25
+      name: 'Ahşap Koleksiyonu - Set B',
+      description: 'Premium ahşap ürün seti',
+      category: 'Ahşap',
+      imageUrl: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=400',
+      products: ahsapProducts.slice(0, 3).map(p => ({
+        productId: p._id.toString(),
+        productName: p.name,
+        quantity: 8,
+        pricePoint: p.pricePoint,
+        imageUrl: p.imageUrl
+      })),
+      totalItems: 24
     });
     console.log('📦 Collection Sets created');
 
@@ -1263,23 +1247,23 @@ const seedDatabase = async () => {
       {
         userId: user1._id,
         collectionId: collection1._id,
-        currentCount: 7,
-        targetCount: 10,
+        currentCount: 2, // Kullanıcı 2 ürün toplamış
+        targetCount: 4,  // Seramik koleksiyonunda 4 ürün var
         isCompleted: false
       },
       {
         userId: user1._id,
         collectionId: collection2._id,
-        currentCount: 10,
-        targetCount: 10,
+        currentCount: 4, // Tüm ürünleri toplamış
+        targetCount: 4,  // Ahşap koleksiyonunda 4 ürün var
         isCompleted: true,
         completedAt: new Date()
       },
       {
         userId: user1._id,
         collectionId: collection3._id,
-        currentCount: 3,
-        targetCount: 8,
+        currentCount: 1, // Sadece 1 ürün toplamış
+        targetCount: 4,  // Cam koleksiyonunda 4 ürün var
         isCompleted: false
       }
     ]);

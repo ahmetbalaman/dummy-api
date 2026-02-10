@@ -8,6 +8,8 @@ const ProductPoint = require('../models/ProductPoint');
 const OrderTL = require('../models/OrderTL');
 const OrderPoint = require('../models/OrderPoint');
 const Loyalty = require('../models/Loyalty');
+const Collection = require('../models/Collection');
+const CollectionSet = require('../models/CollectionSet');
 
 // All mobile routes require user authentication
 router.use(protect, restrictTo('user'));
@@ -41,6 +43,60 @@ router.get('/businesses', async (req, res) => {
   try {
     const businesses = await Business.find({ isActive: true })
       .select('-password -createdAt -updatedAt');
+    res.json(businesses);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get products by collection
+router.get('/products/point', async (req, res) => {
+  try {
+    const { collectionId } = req.query;
+
+    if (!collectionId) {
+      return res.status(400).json({ error: 'Collection ID required' });
+    }
+
+    const products = await ProductPoint.find({ 
+      collectionId,
+      isActive: true 
+    }).sort('createdAt');
+
+    res.json({ products });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Get nearby businesses (within radius)
+router.get('/businesses/nearby', async (req, res) => {
+  try {
+    const { latitude, longitude, radius = 10 } = req.query; // radius in km, default 10km
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'Latitude and longitude required' });
+    }
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const radiusInMeters = parseFloat(radius) * 1000;
+
+    // MongoDB geospatial query
+    const businesses = await Business.find({
+      isActive: true,
+      'location.coordinates': {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [lng, lat]
+          },
+          $maxDistance: radiusInMeters
+        }
+      }
+    }).select('-password -createdAt -updatedAt');
+
     res.json(businesses);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -298,6 +354,97 @@ router.get('/point-earned', async (req, res) => {
     res.json(orders);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Get user's collections
+router.get('/collections', async (req, res) => {
+  try {
+    const UserCollection = require('../models/UserCollection');
+    
+    const userCollections = await UserCollection.find({ userId: req.userId })
+      .populate('collectionId')
+      .sort('-createdAt');
+
+    res.json({ collections: userCollections });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Start tracking a collection
+router.post('/collections', async (req, res) => {
+  try {
+    const { collectionId, targetCount } = req.body;
+    const UserCollection = require('../models/UserCollection');
+    const Collection = require('../models/Collection');
+
+    if (!collectionId || !targetCount) {
+      return res.status(400).json({ error: 'Collection ID and target count required' });
+    }
+
+    // Check if collection exists
+    const collection = await Collection.findById(collectionId);
+    if (!collection) {
+      return res.status(404).json({ error: 'Collection not found' });
+    }
+
+    // Check if user already tracking this collection
+    let userCollection = await UserCollection.findOne({
+      userId: req.userId,
+      collectionId
+    });
+
+    if (userCollection) {
+      return res.status(400).json({ error: 'Already tracking this collection' });
+    }
+
+    // Create new tracking
+    userCollection = await UserCollection.create({
+      userId: req.userId,
+      collectionId,
+      targetCount,
+      currentCount: 0
+    });
+
+    await userCollection.populate('collectionId');
+
+    res.status(201).json(userCollection);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Update collection progress (called when user makes relevant purchase)
+router.put('/collections/:id/progress', async (req, res) => {
+  try {
+    const { increment = 1 } = req.body;
+    const UserCollection = require('../models/UserCollection');
+
+    const userCollection = await UserCollection.findOne({
+      _id: req.params.id,
+      userId: req.userId
+    });
+
+    if (!userCollection) {
+      return res.status(404).json({ error: 'Collection not found' });
+    }
+
+    // Increment progress
+    userCollection.currentCount += increment;
+
+    // Check if completed
+    if (userCollection.currentCount >= userCollection.targetCount && !userCollection.isCompleted) {
+      userCollection.isCompleted = true;
+      userCollection.completedAt = new Date();
+    }
+
+    await userCollection.save();
+    await userCollection.populate('collectionId');
+
+    res.json(userCollection);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 

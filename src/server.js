@@ -5,14 +5,50 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const businessRoutes = require('./routes/business');
 const mobileRoutes = require('./routes/mobile');
 const kioskRoutes = require('./routes/kiosk');
+const collectionsRoutes = require('./routes/collections');
 
 const app = express();
+const server = http.createServer(app);
+
+// Socket.IO setup
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN?.split(',') || '*',
+    credentials: true
+  }
+});
+
+// Make io accessible to routes
+app.set('io', io);
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log('🔌 Client connected:', socket.id);
+
+  // Business panel joins their business room
+  socket.on('join-business', (businessId) => {
+    socket.join(`business-${businessId}`);
+    console.log(`📍 Socket ${socket.id} joined business-${businessId}`);
+  });
+
+  // Kiosk joins QR code room (for session linking)
+  socket.on('join-qr-room', (qrCode) => {
+    socket.join(`qr-${qrCode}`);
+    console.log(`📍 Socket ${socket.id} joined qr-${qrCode}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('🔌 Client disconnected:', socket.id);
+  });
+});
 
 // Security middleware
 app.use(helmet());
@@ -49,6 +85,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/business', businessRoutes);
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/kiosk', kioskRoutes);
+app.use('/api/collections', collectionsRoutes);
+app.use('/api/collection-sets', collectionsRoutes); // Same router handles both
 
 // 404 handler
 app.use((req, res) => {
@@ -69,9 +107,10 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('✅ MongoDB connected');
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV}`);
+      console.log(`🔌 Socket.IO enabled`);
     });
   })
   .catch(err => {

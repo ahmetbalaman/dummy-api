@@ -10,6 +10,9 @@ const businessSchema = new mongoose.Schema({
   phone: String,
   logoUrl: String,
   coverImageUrl: String,
+  themeColor: { type: String, default: '#667eea' }, // Primary branding color
+  secondaryColor: { type: String, default: '#764ba2' }, // Secondary color for gradients
+  notificationSound: { type: String, enum: ['beep', 'bell', 'chime', 'none'], default: 'beep' }, // Order notification sound
   location: {
     type: { type: String, enum: ['Point'], default: 'Point' },
     coordinates: { type: [Number], default: [0, 0] }, // [longitude, latitude]

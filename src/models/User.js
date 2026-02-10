@@ -7,7 +7,8 @@ const userSchema = new mongoose.Schema({
   avatarUrl: String,
   provider: { type: String, enum: ['google', 'apple'], required: true },
   providerId: { type: String, required: true },
-  role: { type: String, default: 'user', enum: ['user'] }
+  role: { type: String, default: 'user', enum: ['user'] },
+  loyaltyPoints: { type: Number, default: 0 } // Toplam puan
 }, {
   timestamps: true
 });

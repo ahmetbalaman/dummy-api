@@ -513,7 +513,113 @@ router.patch('/products-point/:id/stock', async (req, res) => {
   }
 });
 
-// TL Orders
+// Combined Orders - TL and Point orders together
+router.get('/orders', async (req, res) => {
+  try {
+    const { status, startDate, endDate } = req.query;
+    const query = { businessId: req.businessId };
+    
+    if (status) query.status = status;
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
+    }
+
+    // Fetch both TL and Point orders
+    const [ordersTL, ordersPoint] = await Promise.all([
+      OrderTL.find(query)
+        .populate('userId', 'name email avatarUrl')
+        .lean(),
+      OrderPoint.find(query)
+        .populate('userId', 'name email avatarUrl')
+        .lean()
+    ]);
+
+    // Add type field to distinguish orders
+    const tlOrders = ordersTL.map(order => ({ ...order, orderType: 'tl' }));
+    const pointOrders = ordersPoint.map(order => ({ ...order, orderType: 'point' }));
+
+    // Combine and sort by creation date
+    const allOrders = [...tlOrders, ...pointOrders].sort((a, b) => 
+      new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    res.json(allOrders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update order status (works for both TL and Point orders)
+router.patch('/orders/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const { id } = req.params;
+
+    // Try to find in TL orders first
+    let order = await OrderTL.findOneAndUpdate(
+      { _id: id, businessId: req.businessId },
+      { status },
+      { new: true }
+    ).populate('userId', 'name email avatarUrl');
+
+    let orderType = 'tl';
+
+    // If not found, try Point orders
+    if (!order) {
+      order = await OrderPoint.findOneAndUpdate(
+        { _id: id, businessId: req.businessId },
+        { status },
+        { new: true }
+      ).populate('userId', 'name email avatarUrl');
+      orderType = 'point';
+    }
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Log kaydı oluştur
+    const statusLabels = {
+      pending: 'Bekliyor',
+      preparing: 'Hazırlanıyor',
+      ready: 'Hazır',
+      completed: 'Tamamlandı',
+      cancelled: 'İptal Edildi'
+    };
+
+    const logLevel = status === 'cancelled' ? 'warning' : 'info';
+    const logMessage = `Sipariş durumu güncellendi: ${statusLabels[status] || status}`;
+
+    await Log.create({
+      level: logLevel,
+      category: 'order',
+      message: logMessage,
+      businessId: req.businessId,
+      userId: order.userId?._id,
+      metadata: {
+        orderId: order._id,
+        orderType: orderType,
+        newStatus: status,
+        statusLabel: statusLabels[status] || status,
+        customerName: order.userId?.name || 'Misafir',
+        totalAmount: orderType === 'tl' ? order.totalTL : order.totalPoint,
+        itemCount: order.items?.length || 0,
+        source: 'business_panel'
+      }
+    });
+
+    // Add orderType to response
+    const orderWithType = { ...order.toObject(), orderType };
+
+    res.json(orderWithType);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Legacy endpoints (kept for backward compatibility)
 router.get('/orders-tl', async (req, res) => {
   try {
     const { status, startDate, endDate } = req.query;
@@ -551,7 +657,6 @@ router.patch('/orders-tl/:id', async (req, res) => {
   }
 });
 
-// Point Orders
 router.get('/orders-point', async (req, res) => {
   try {
     const { status } = req.query;
