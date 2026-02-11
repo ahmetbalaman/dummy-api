@@ -533,6 +533,8 @@ router.patch('/orders/restock/:id', async (req, res) => {
     // Durum değişikliklerine göre tarih güncelle
     if (status === 'in_transit' && !order.shippedAt) {
       order.shippedAt = new Date();
+      // Kargolandı durumuna geçtiğinde type'ı 'admin' yap (gönderilen sevkiyatlara geçsin)
+      order.type = 'admin';
     }
     if (status === 'delivered' && !order.deliveredAt) {
       order.deliveredAt = new Date();
@@ -542,6 +544,7 @@ router.patch('/orders/restock/:id', async (req, res) => {
     
     const statusText = {
       pending: 'Beklemede',
+      approved: 'Onaylandı',
       in_transit: 'Kargolandı',
       delivered: 'Teslim Edildi',
       cancelled: 'İptal Edildi'
@@ -556,7 +559,8 @@ router.patch('/orders/restock/:id', async (req, res) => {
           orderId: order._id,
           status: order.status,
           trackingNumber: order.trackingNumber,
-          totalItems: order.products?.reduce((sum, p) => sum + p.quantity, 0) || 0
+          totalItems: order.products?.reduce((sum, p) => sum + p.quantity, 0) || 0,
+          movedToShipments: status === 'in_transit'
         },
         ipAddress: req.ip
       }

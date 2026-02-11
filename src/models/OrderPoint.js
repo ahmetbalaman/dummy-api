@@ -9,6 +9,8 @@ const orderPointSchema = new mongoose.Schema({
     quantity: { type: Number, required: true },
     unitPoint: { type: Number, required: true },
     unitPrice: { type: Number, default: 0 }, // TL ürünleri için
+    collectionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Collection' }, // Koleksiyon bilgisi
+    collectionName: String,
     note: String
   }],
   totalPoint: { type: Number, required: true },

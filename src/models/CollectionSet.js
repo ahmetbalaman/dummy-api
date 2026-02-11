@@ -8,11 +8,10 @@ const collectionSetSchema = new mongoose.Schema({
   products: [{
     productId: String,
     productName: String,
-    quantity: Number,
     pricePoint: Number,
     imageUrl: String
   }],
-  totalItems: { type: Number, required: true },
+  totalItems: { type: Number, required: true }, // Ürün çeşit sayısı
   isActive: { type: Boolean, default: true }
 }, {
   timestamps: true

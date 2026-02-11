@@ -188,7 +188,7 @@ router.post('/order-tl', async (req, res) => {
       });
     }
 
-    // Calculate points earned (10% of total)
+    // Calculate points earned (10% of total) - but don't add yet
     const pointsEarned = Math.floor(totalTL * 0.1);
 
     // Create order
@@ -202,12 +202,8 @@ router.post('/order-tl', async (req, res) => {
       status: 'received'
     });
 
-    // Update loyalty points
-    await Loyalty.findOneAndUpdate(
-      { userId: req.userId, businessId },
-      { $inc: { points: pointsEarned } },
-      { upsert: true, new: true }
-    );
+    // Puanlar sipariş tamamlandığında verilecek (completed durumunda)
+    // await Loyalty.findOneAndUpdate(...) - KALDIRILDI
 
     res.status(201).json(order);
   } catch (error) {
@@ -232,7 +228,7 @@ router.post('/order-point', async (req, res) => {
     const orderItems = [];
 
     for (const item of items) {
-      const product = await ProductPoint.findById(item.productId);
+      const product = await ProductPoint.findById(item.productId).populate('collectionId');
       if (!product || product.businessId.toString() !== businessId) {
         return res.status(400).json({ error: `Invalid product: ${item.productId}` });
       }
@@ -245,6 +241,8 @@ router.post('/order-point', async (req, res) => {
         productName: product.name,
         quantity: item.quantity,
         unitPoint: product.pricePoint,
+        collectionId: product.collectionId?._id, // Koleksiyon bilgisini sakla
+        collectionName: product.collectionId?.name,
         note: item.note
       });
     }
@@ -362,11 +360,136 @@ router.get('/collections', async (req, res) => {
   try {
     const UserCollection = require('../models/UserCollection');
     
+    // Kullanıcının UserCollection kayıtlarını getir
     const userCollections = await UserCollection.find({ userId: req.userId })
       .populate('collectionId')
       .sort('-createdAt');
 
-    res.json({ collections: userCollections });
+    // Eğer UserCollection kayıtları varsa direkt döndür
+    if (userCollections.length > 0) {
+      return res.json({ collections: userCollections });
+    }
+
+    // UserCollection kayıtları yoksa, kullanıcının tamamlanmış siparişlerinden koleksiyonları bul
+    const completedOrders = await OrderPoint.find({
+      userId: req.userId,
+      status: 'completed'
+    }).select('items');
+
+    // Koleksiyonları topla
+    const collectionIds = new Set();
+    completedOrders.forEach(order => {
+      order.items.forEach(item => {
+        if (item.collectionId) {
+          collectionIds.add(item.collectionId.toString());
+        }
+      });
+    });
+
+    // Eğer hiç koleksiyon yoksa boş array döndür
+    if (collectionIds.size === 0) {
+      return res.json({ collections: [] });
+    }
+
+    // Her koleksiyon için UserCollection kaydı oluştur
+    const newUserCollections = [];
+    for (const collectionId of collectionIds) {
+      // Koleksiyondaki toplam ürün sayısını hesapla
+      const totalProducts = await ProductPoint.countDocuments({
+        collectionId: collectionId,
+        isActive: true
+      });
+
+      // Kullanıcının bu koleksiyondan kaç ürünü olduğunu hesapla
+      let currentCount = 0;
+      completedOrders.forEach(order => {
+        order.items.forEach(item => {
+          if (item.collectionId && item.collectionId.toString() === collectionId) {
+            currentCount += item.quantity;
+          }
+        });
+      });
+
+      // UserCollection kaydı oluştur
+      const userCollection = await UserCollection.create({
+        userId: req.userId,
+        collectionId: collectionId,
+        currentCount: currentCount,
+        targetCount: totalProducts || 10,
+        isCompleted: currentCount >= totalProducts,
+        completedAt: currentCount >= totalProducts ? new Date() : null
+      });
+
+      await userCollection.populate('collectionId');
+      newUserCollections.push(userCollection);
+    }
+
+    res.json({ collections: newUserCollections });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get collection details with all products
+router.get('/collections/:collectionId/details', async (req, res) => {
+  try {
+    const { collectionId } = req.params;
+    const UserCollection = require('../models/UserCollection');
+    
+    // Koleksiyonu getir
+    const collection = await Collection.findById(collectionId);
+    if (!collection) {
+      return res.status(404).json({ error: 'Collection not found' });
+    }
+
+    // Kullanıcının bu koleksiyondaki ilerlemesini getir
+    const userCollection = await UserCollection.findOne({
+      userId: req.userId,
+      collectionId: collectionId
+    });
+
+    // Koleksiyondaki tüm ürünleri getir
+    const allProducts = await ProductPoint.find({
+      collectionId: collectionId,
+      isActive: true
+    }).sort('name');
+
+    // Kullanıcının sahip olduğu ürünleri işaretle
+    // (Sipariş geçmişinden kontrol et - completed siparişler)
+    const completedOrders = await OrderPoint.find({
+      userId: req.userId,
+      status: 'completed'
+    }).select('items');
+
+    // Kullanıcının aldığı ürünleri topla
+    const userProductCounts = {};
+    completedOrders.forEach(order => {
+      order.items.forEach(item => {
+        if (item.collectionId && item.collectionId.toString() === collectionId) {
+          const productId = item.productId.toString();
+          userProductCounts[productId] = (userProductCounts[productId] || 0) + item.quantity;
+        }
+      });
+    });
+
+    // Ürünleri kullanıcının sahiplik durumu ile birlikte döndür
+    const productsWithOwnership = allProducts.map(product => ({
+      ...product.toObject(),
+      owned: userProductCounts[product._id.toString()] > 0,
+      ownedCount: userProductCounts[product._id.toString()] || 0
+    }));
+
+    res.json({
+      collection: collection,
+      userProgress: userCollection || {
+        currentCount: 0,
+        targetCount: allProducts.length,
+        isCompleted: false
+      },
+      products: productsWithOwnership,
+      totalProducts: allProducts.length,
+      ownedProducts: Object.keys(userProductCounts).length
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

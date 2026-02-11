@@ -24,10 +24,21 @@ exports.verifyGoogleToken = async (idToken) => {
 
 exports.verifyAppleToken = async (identityToken) => {
   try {
-    const appleIdTokenClaims = await appleSignin.verifyIdToken(identityToken, {
+    console.log('🍎 Verifying Apple token...');
+    
+    // Timeout ekle - 10 saniye
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Apple token verification timeout')), 10000)
+    );
+    
+    const verifyPromise = appleSignin.verifyIdToken(identityToken, {
       audience: process.env.APPLE_CLIENT_ID,
       ignoreExpiration: false
     });
+    
+    const appleIdTokenClaims = await Promise.race([verifyPromise, timeoutPromise]);
+    
+    console.log('✅ Apple token verified:', appleIdTokenClaims);
 
     return {
       providerId: appleIdTokenClaims.sub,
@@ -35,6 +46,7 @@ exports.verifyAppleToken = async (identityToken) => {
       name: appleIdTokenClaims.email?.split('@')[0] || 'Apple User'
     };
   } catch (error) {
-    throw new Error('Invalid Apple token');
+    console.error('❌ Apple token verification failed:', error.message);
+    throw new Error(`Invalid Apple token: ${error.message}`);
   }
 };

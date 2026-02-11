@@ -4,12 +4,14 @@ const { protect, restrictTo } = require('../middleware/auth');
 const Business = require('../models/Business');
 const Category = require('../models/Category');
 const Collection = require('../models/Collection');
+const CollectionSet = require('../models/CollectionSet');
 const ProductTL = require('../models/ProductTL');
 const ProductPoint = require('../models/ProductPoint');
 const OrderTL = require('../models/OrderTL');
 const OrderPoint = require('../models/OrderPoint');
 const Shipment = require('../models/Shipment');
 const Log = require('../models/Log');
+const Loyalty = require('../models/Loyalty');
 
 // All business routes require authentication
 router.use(protect, restrictTo('business'));
@@ -130,6 +132,30 @@ router.get('/collections/available', async (req, res) => {
     );
     
     res.json(availableCollections);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all collection sets (for ordering)
+router.get('/collection-sets', async (req, res) => {
+  try {
+    const collectionSets = await CollectionSet.find({ isActive: true })
+      .sort({ name: 1 });
+    res.json(collectionSets);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get single collection set
+router.get('/collection-sets/:id', async (req, res) => {
+  try {
+    const collectionSet = await CollectionSet.findById(req.params.id);
+    if (!collectionSet) {
+      return res.status(404).json({ error: 'Collection set not found' });
+    }
+    res.json(collectionSet);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -558,20 +584,16 @@ router.patch('/orders/:id', async (req, res) => {
     const { id } = req.params;
 
     // Try to find in TL orders first
-    let order = await OrderTL.findOneAndUpdate(
-      { _id: id, businessId: req.businessId },
-      { status },
-      { new: true }
+    let order = await OrderTL.findOne(
+      { _id: id, businessId: req.businessId }
     ).populate('userId', 'name email avatarUrl');
 
     let orderType = 'tl';
 
     // If not found, try Point orders
     if (!order) {
-      order = await OrderPoint.findOneAndUpdate(
-        { _id: id, businessId: req.businessId },
-        { status },
-        { new: true }
+      order = await OrderPoint.findOne(
+        { _id: id, businessId: req.businessId }
       ).populate('userId', 'name email avatarUrl');
       orderType = 'point';
     }
@@ -580,16 +602,207 @@ router.patch('/orders/:id', async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
+    const oldStatus = order.status;
+    
+    // Durumu güncelle
+    order.status = status;
+    await order.save();
+
+    // Eğer sipariş "cancelled" durumuna geçtiyse, puan iadesi yap
+    if (status === 'cancelled' && oldStatus !== 'cancelled') {
+      
+      // Puan siparişi iptal edildiyse, harcanan puanları iade et
+      if (orderType === 'point' && order.totalPoint > 0) {
+        const userId = order.userId?._id || order.userId;
+        
+        if (!userId) {
+          console.error('❌ User ID not found for point refund:', order);
+        } else {
+          await Loyalty.findOneAndUpdate(
+            { userId: userId, businessId: req.businessId },
+            { $inc: { points: order.totalPoint } }, // Puanları geri ver
+            { upsert: true, new: true }
+          );
+
+          await Log.create({
+            level: 'warning',
+            category: 'loyalty',
+            message: `Puan siparişi iptal edildi, ${order.totalPoint} puan iade edildi`,
+            businessId: req.businessId,
+            userId: userId,
+            metadata: {
+              orderId: order._id,
+              pointsRefunded: order.totalPoint,
+              reason: 'order_cancelled'
+            }
+          });
+        }
+      }
+      
+      // TL siparişi iptal edildiyse
+      if (orderType === 'tl') {
+        const userId = order.userId?._id || order.userId;
+        
+        if (!userId) {
+          console.error('❌ User ID not found for TL order cancellation:', order);
+        }
+        
+        // Eğer puan kazanılmışsa (pointsEarned > 0), puanları geri al
+        // Sipariş durumu ne olursa olsun, eğer puan verilmişse geri alınmalı
+        if (order.pointsEarned > 0 && userId) {
+          const loyaltyBefore = await Loyalty.findOne({ userId: userId, businessId: req.businessId });
+          console.log('🔍 Loyalty before deduction:', loyaltyBefore);
+          
+          // Sadece kullanıcının yeterli puanı varsa düş
+          if (loyaltyBefore && loyaltyBefore.points >= order.pointsEarned) {
+            const loyaltyAfter = await Loyalty.findOneAndUpdate(
+              { userId: userId, businessId: req.businessId },
+              { $inc: { points: -order.pointsEarned } }, // Puanları geri al
+              { new: true }
+            );
+            
+            console.log('✅ Loyalty after deduction:', loyaltyAfter);
+
+            await Log.create({
+              level: 'warning',
+              category: 'loyalty',
+              message: `TL siparişi iptal edildi, ${order.pointsEarned} puan geri alındı`,
+              businessId: req.businessId,
+              userId: userId,
+              metadata: {
+                orderId: order._id,
+                pointsDeducted: order.pointsEarned,
+                totalTL: order.totalTL,
+                pointsBefore: loyaltyBefore?.points || 0,
+                pointsAfter: loyaltyAfter?.points || 0,
+                orderStatus: oldStatus,
+                reason: 'order_cancelled'
+              }
+            });
+          } else {
+            console.warn('⚠️ User does not have enough points to deduct:', {
+              userId,
+              currentPoints: loyaltyBefore?.points || 0,
+              pointsToDeduct: order.pointsEarned
+            });
+            
+            await Log.create({
+              level: 'error',
+              category: 'loyalty',
+              message: `TL siparişi iptal edildi ama kullanıcıda yeterli puan yok (${loyaltyBefore?.points || 0} < ${order.pointsEarned})`,
+              businessId: req.businessId,
+              userId: userId,
+              metadata: {
+                orderId: order._id,
+                pointsToDeduct: order.pointsEarned,
+                currentPoints: loyaltyBefore?.points || 0,
+                orderStatus: oldStatus
+              }
+            });
+          }
+        }
+        
+        // TL iadesi için log (gerçek ödeme entegrasyonu varsa burada işlem yapılır)
+        if (userId) {
+          await Log.create({
+            level: 'warning',
+            category: 'order',
+            message: `TL siparişi iptal edildi, ₺${order.totalTL} iade edilmeli`,
+            businessId: req.businessId,
+            userId: userId,
+            metadata: {
+              orderId: order._id,
+              refundAmount: order.totalTL,
+              paymentMethod: order.paymentMethod,
+              reason: 'order_cancelled'
+            }
+          });
+        }
+      }
+    }
+
+    // Eğer sipariş "completed" durumuna geçtiyse
+    if (status === 'completed' && oldStatus !== 'completed') {
+      
+      // TL siparişi için puan ekle
+      if (orderType === 'tl' && order.pointsEarned > 0) {
+        await Loyalty.findOneAndUpdate(
+          { userId: order.userId._id, businessId: req.businessId },
+          { $inc: { points: order.pointsEarned } },
+          { upsert: true, new: true }
+        );
+      }
+      
+      // Puan siparişi için koleksiyonları güncelle
+      if (orderType === 'point') {
+        const UserCollection = require('../models/UserCollection');
+        const ProductPoint = require('../models/ProductPoint');
+        const collectionUpdates = {};
+
+        // Siparişteki her ürün için koleksiyon bilgisini topla
+        for (const item of order.items) {
+          if (item.collectionId) {
+            const collectionId = item.collectionId.toString();
+            if (!collectionUpdates[collectionId]) {
+              collectionUpdates[collectionId] = 0;
+            }
+            collectionUpdates[collectionId] += item.quantity;
+          }
+        }
+
+        // Kullanıcının koleksiyonlarını güncelle
+        for (const [collectionId, count] of Object.entries(collectionUpdates)) {
+          // Kullanıcının bu koleksiyonu var mı kontrol et
+          let userCollection = await UserCollection.findOne({
+            userId: order.userId._id,
+            collectionId: collectionId
+          });
+
+          if (userCollection) {
+            // Mevcut koleksiyonu güncelle
+            userCollection.currentCount += count;
+            
+            // Hedef sayıya ulaşıldı mı kontrol et
+            if (userCollection.currentCount >= userCollection.targetCount && !userCollection.isCompleted) {
+              userCollection.isCompleted = true;
+              userCollection.completedAt = new Date();
+            }
+            
+            await userCollection.save();
+          } else {
+            // Yeni koleksiyon kaydı oluştur
+            // Koleksiyonun toplam ürün sayısını hesapla
+            const totalProductsInCollection = await ProductPoint.countDocuments({
+              collectionId: collectionId,
+              businessId: req.businessId,
+              isActive: true
+            });
+            
+            const targetCount = totalProductsInCollection || 10; // Varsayılan 10
+            
+            await UserCollection.create({
+              userId: order.userId._id,
+              collectionId: collectionId,
+              currentCount: count,
+              targetCount: targetCount,
+              isCompleted: count >= targetCount,
+              completedAt: count >= targetCount ? new Date() : null
+            });
+          }
+        }
+      }
+    }
+
     // Log kaydı oluştur
     const statusLabels = {
       pending: 'Bekliyor',
       preparing: 'Hazırlanıyor',
       ready: 'Hazır',
-      completed: 'Tamamlandı',
+      completed: 'Teslim Edildi',
       cancelled: 'İptal Edildi'
     };
 
-    const logLevel = status === 'cancelled' ? 'warning' : 'info';
+    const logLevel = status === 'cancelled' ? 'warning' : status === 'completed' ? 'success' : 'info';
     const logMessage = `Sipariş durumu güncellendi: ${statusLabels[status] || status}`;
 
     await Log.create({
@@ -601,10 +814,15 @@ router.patch('/orders/:id', async (req, res) => {
       metadata: {
         orderId: order._id,
         orderType: orderType,
+        oldStatus: oldStatus,
         newStatus: status,
         statusLabel: statusLabels[status] || status,
         customerName: order.userId?.name || 'Misafir',
         totalAmount: orderType === 'tl' ? order.totalTL : order.totalPoint,
+        pointsEarned: orderType === 'tl' && status === 'completed' ? order.pointsEarned : undefined,
+        pointsRefunded: orderType === 'point' && status === 'cancelled' ? order.totalPoint : undefined,
+        pointsDeducted: orderType === 'tl' && status === 'cancelled' && oldStatus === 'completed' ? order.pointsEarned : undefined,
+        refundAmount: orderType === 'tl' && status === 'cancelled' ? order.totalTL : undefined,
         itemCount: order.items?.length || 0,
         source: 'business_panel'
       }
@@ -643,14 +861,44 @@ router.get('/orders-tl', async (req, res) => {
 
 router.patch('/orders-tl/:id', async (req, res) => {
   try {
-    const order = await OrderTL.findOneAndUpdate(
-      { _id: req.params.id, businessId: req.businessId },
-      { status: req.body.status },
-      { new: true }
+    const order = await OrderTL.findOne(
+      { _id: req.params.id, businessId: req.businessId }
     );
+    
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
+
+    const oldStatus = order.status;
+    const newStatus = req.body.status;
+    
+    // Durumu güncelle
+    order.status = newStatus;
+    await order.save();
+
+    // Eğer sipariş "completed" durumuna geçtiyse ve puan kazanılacaksa
+    if (newStatus === 'completed' && oldStatus !== 'completed' && order.pointsEarned > 0) {
+      await Loyalty.findOneAndUpdate(
+        { userId: order.userId, businessId: req.businessId },
+        { $inc: { points: order.pointsEarned } },
+        { upsert: true, new: true }
+      );
+
+      // Log kaydı
+      await Log.create({
+        level: 'success',
+        category: 'loyalty',
+        message: `TL siparişi tamamlandı, ${order.pointsEarned} puan kazanıldı`,
+        businessId: req.businessId,
+        userId: order.userId,
+        metadata: {
+          orderId: order._id,
+          pointsEarned: order.pointsEarned,
+          totalTL: order.totalTL
+        }
+      });
+    }
+
     res.json(order);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -674,14 +922,94 @@ router.get('/orders-point', async (req, res) => {
 
 router.patch('/orders-point/:id', async (req, res) => {
   try {
-    const order = await OrderPoint.findOneAndUpdate(
-      { _id: req.params.id, businessId: req.businessId },
-      { status: req.body.status },
-      { new: true }
+    const order = await OrderPoint.findOne(
+      { _id: req.params.id, businessId: req.businessId }
     );
+    
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
+
+    const oldStatus = order.status;
+    const newStatus = req.body.status;
+    
+    // Durumu güncelle
+    order.status = newStatus;
+    await order.save();
+
+    // Eğer sipariş "completed" durumuna geçtiyse, kullanıcının koleksiyonlarını güncelle
+    if (newStatus === 'completed' && oldStatus !== 'completed') {
+      const UserCollection = require('../models/UserCollection');
+      const ProductPoint = require('../models/ProductPoint');
+      const collectionUpdates = {};
+
+      // Siparişteki her ürün için koleksiyon bilgisini topla
+      for (const item of order.items) {
+        if (item.collectionId) {
+          const collectionId = item.collectionId.toString();
+          if (!collectionUpdates[collectionId]) {
+            collectionUpdates[collectionId] = 0;
+          }
+          collectionUpdates[collectionId] += item.quantity;
+        }
+      }
+
+      // Kullanıcının koleksiyonlarını güncelle
+      for (const [collectionId, count] of Object.entries(collectionUpdates)) {
+        // Kullanıcının bu koleksiyonu var mı kontrol et
+        let userCollection = await UserCollection.findOne({
+          userId: order.userId,
+          collectionId: collectionId
+        });
+
+        if (userCollection) {
+          // Mevcut koleksiyonu güncelle
+          userCollection.currentCount += count;
+          
+          // Hedef sayıya ulaşıldı mı kontrol et
+          if (userCollection.currentCount >= userCollection.targetCount && !userCollection.isCompleted) {
+            userCollection.isCompleted = true;
+            userCollection.completedAt = new Date();
+          }
+          
+          await userCollection.save();
+        } else {
+          // Yeni koleksiyon kaydı oluştur
+          // Koleksiyonun toplam ürün sayısını hesapla
+          const totalProductsInCollection = await ProductPoint.countDocuments({
+            collectionId: collectionId,
+            businessId: req.businessId,
+            isActive: true
+          });
+          
+          const targetCount = totalProductsInCollection || 10; // Varsayılan 10
+          
+          await UserCollection.create({
+            userId: order.userId,
+            collectionId: collectionId,
+            currentCount: count,
+            targetCount: targetCount,
+            isCompleted: count >= targetCount,
+            completedAt: count >= targetCount ? new Date() : null
+          });
+        }
+      }
+
+      // Log kaydı
+      await Log.create({
+        level: 'success',
+        category: 'collection',
+        message: `Sipariş tamamlandı ve koleksiyonlar güncellendi`,
+        businessId: req.businessId,
+        userId: order.userId,
+        metadata: {
+          orderId: order._id,
+          collectionsUpdated: Object.keys(collectionUpdates).length,
+          totalItems: Object.values(collectionUpdates).reduce((sum, count) => sum + count, 0)
+        }
+      });
+    }
+
     res.json(order);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -717,25 +1045,112 @@ router.patch('/shipments/:id/confirm', async (req, res) => {
       return res.status(400).json({ error: 'Shipment already delivered' });
     }
 
-    // Kargo onaylandı - ürünleri stoğa ekle
+    // Kargo onaylandı - ürünleri stoğa ekle veya yeni koleksiyon oluştur
     let updatedProducts = [];
+    let newCollection = null;
+    
     if (shipment.products && shipment.products.length > 0) {
-      for (const item of shipment.products) {
-        // Ürünü isme göre bul (productId olmayabilir)
-        const product = await ProductPoint.findOne({
-          name: item.name,
-          businessId: req.businessId
+      // Eğer collectionSetId varsa, bu yeni bir koleksiyon seti
+      if (shipment.collectionSetId) {
+        const collectionSet = shipment.collectionSetId;
+        
+        // İşletmede bu koleksiyon var mı kontrol et
+        const existingCollection = await Collection.findOne({
+          businessId: req.businessId,
+          name: collectionSet.name
         });
-
-        if (product) {
-          product.stock = (product.stock || 0) + item.quantity;
-          await product.save();
-          updatedProducts.push({
-            name: product.name,
-            oldStock: product.stock - item.quantity,
-            newStock: product.stock,
-            added: item.quantity
+        
+        if (!existingCollection) {
+          // Yeni koleksiyon oluştur
+          newCollection = await Collection.create({
+            businessId: req.businessId,
+            name: collectionSet.name,
+            description: collectionSet.description,
+            imageUrl: collectionSet.imageUrl,
+            category: collectionSet.category,
+            isActive: true
           });
+          
+          // Koleksiyondaki ürünleri oluştur
+          for (const item of shipment.products) {
+            const product = await ProductPoint.create({
+              businessId: req.businessId,
+              collectionId: newCollection._id,
+              collectionName: newCollection.name,
+              name: item.name,
+              description: item.description || '',
+              pricePoint: item.pricePoint,
+              imageUrl: item.imageUrl || '',
+              stock: item.quantity,
+              isActive: true
+            });
+            
+            updatedProducts.push({
+              name: product.name,
+              stock: product.stock,
+              added: item.quantity,
+              isNew: true
+            });
+          }
+        } else {
+          // Mevcut koleksiyona ürün ekle
+          for (const item of shipment.products) {
+            let product = await ProductPoint.findOne({
+              name: item.name,
+              businessId: req.businessId,
+              collectionId: existingCollection._id
+            });
+            
+            if (product) {
+              product.stock = (product.stock || 0) + item.quantity;
+              await product.save();
+              updatedProducts.push({
+                name: product.name,
+                oldStock: product.stock - item.quantity,
+                newStock: product.stock,
+                added: item.quantity
+              });
+            } else {
+              // Ürün yoksa yeni oluştur
+              product = await ProductPoint.create({
+                businessId: req.businessId,
+                collectionId: existingCollection._id,
+                collectionName: existingCollection.name,
+                name: item.name,
+                description: item.description || '',
+                pricePoint: item.pricePoint,
+                imageUrl: item.imageUrl || '',
+                stock: item.quantity,
+                isActive: true
+              });
+              
+              updatedProducts.push({
+                name: product.name,
+                stock: product.stock,
+                added: item.quantity,
+                isNew: true
+              });
+            }
+          }
+        }
+      } else {
+        // Koleksiyon seti yok, sadece stok güncelle
+        for (const item of shipment.products) {
+          const product = await ProductPoint.findOne({
+            name: item.name,
+            businessId: req.businessId
+          });
+
+          if (product) {
+            product.stock = (product.stock || 0) + item.quantity;
+            await product.save();
+            updatedProducts.push({
+              name: product.name,
+              oldStock: product.stock - item.quantity,
+              newStock: product.stock,
+              added: item.quantity
+            });
+          }
         }
       }
     }
@@ -749,17 +1164,24 @@ router.patch('/shipments/:id/confirm', async (req, res) => {
     await Log.create({
       level: 'success',
       category: 'shipment',
-      message: `Kargo teslim alındı: ${shipment.collectionSetId?.name || 'Koleksiyon Seti'}`,
+      message: newCollection 
+        ? `Yeni koleksiyon eklendi: ${newCollection.name}`
+        : `Kargo teslim alındı: ${shipment.collectionSetId?.name || 'Stok Siparişi'}`,
       businessId: req.businessId,
       metadata: {
         shipmentId: shipment._id,
         trackingNumber: shipment.trackingNumber,
         totalItems: shipment.products.reduce((sum, p) => sum + p.quantity, 0),
+        newCollection: newCollection ? { id: newCollection._id, name: newCollection.name } : null,
         updatedProducts: updatedProducts
       }
     });
 
-    res.json(shipment);
+    res.json({ 
+      shipment, 
+      newCollection,
+      updatedProducts 
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -823,7 +1245,7 @@ router.post('/qr', async (req, res) => {
 // Restock Orders - İşletmeden admin'e ürün siparişi
 router.post('/orders/restock', async (req, res) => {
   try {
-    const { items } = req.body; // [{ productId, productName, quantity, pricePoint }]
+    const { items, collectionSetId } = req.body; // [{ productId, productName, quantity, pricePoint }]
     
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'Items required' });
@@ -837,6 +1259,15 @@ router.post('/orders/restock', async (req, res) => {
     // Toplam ürün sayısını hesapla
     const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
 
+    // Eğer collectionSetId varsa, koleksiyon seti bilgilerini al
+    let collectionSetName = null;
+    if (collectionSetId) {
+      const collectionSet = await CollectionSet.findById(collectionSetId);
+      if (collectionSet) {
+        collectionSetName = collectionSet.name;
+      }
+    }
+
     // Sipariş oluştur (Shipment olarak kaydet)
     const shipment = await Shipment.create({
       businessId: req.businessId,
@@ -846,6 +1277,8 @@ router.post('/orders/restock', async (req, res) => {
       type: 'restock', // Yeni alan: 'admin' veya 'restock'
       status: 'pending',
       totalItems: totalItems,
+      collectionSetId: collectionSetId || null,
+      collectionSetName: collectionSetName,
       products: items.map(item => ({
         productId: item.productId,
         name: item.productName,
@@ -859,10 +1292,14 @@ router.post('/orders/restock', async (req, res) => {
     await Log.create({
       level: 'info',
       category: 'order',
-      message: `Stok siparişi oluşturuldu: ${totalItems} ürün`,
+      message: collectionSetName 
+        ? `Koleksiyon seti siparişi: ${collectionSetName} (${totalItems} ürün)`
+        : `Stok siparişi oluşturuldu: ${totalItems} ürün`,
       businessId: req.businessId,
       metadata: {
         shipmentId: shipment._id,
+        collectionSetId: collectionSetId,
+        collectionSetName: collectionSetName,
         items: items.map(i => ({ name: i.productName, quantity: i.quantity })),
         totalItems: totalItems
       }
