@@ -241,7 +241,7 @@ router.post('/order-point', async (req, res) => {
         productName: product.name,
         quantity: item.quantity,
         unitPoint: product.pricePoint,
-        collectionId: product.collectionId?._id, // Koleksiyon bilgisini sakla
+        collectionId: product.collectionId?._id,
         collectionName: product.collectionId?.name,
         note: item.note
       });

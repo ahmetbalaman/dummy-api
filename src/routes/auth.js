@@ -155,13 +155,19 @@ router.post('/google', async (req, res) => {
 // Apple Sign In
 router.post('/apple', async (req, res) => {
   try {
+    console.log('🍎 Apple Sign In isteği alındı');
+    console.log('🍎 Request body:', JSON.stringify(req.body, null, 2));
+    
     const { identityToken } = req.body;
 
     if (!identityToken) {
+      console.log('❌ Identity token bulunamadı');
       return res.status(400).json({ error: 'Identity token required' });
     }
 
+    console.log('🍎 Identity token doğrulanıyor...');
     const appleData = await verifyAppleToken(identityToken);
+    console.log('🍎 Apple data:', JSON.stringify(appleData, null, 2));
 
     // First try to find by providerId and provider
     let user = await User.findOne({ providerId: appleData.providerId, provider: 'apple' });
@@ -189,6 +195,7 @@ router.post('/apple', async (req, res) => {
 
     const token = generateToken(user._id, 'user');
 
+    console.log('✅ Apple Sign In başarılı, token oluşturuldu');
     res.json({
       token,
       user: {
@@ -202,7 +209,8 @@ router.post('/apple', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Apple auth error:', error);
+    console.error('❌ Apple auth error:', error);
+    console.error('❌ Error stack:', error.stack);
     res.status(500).json({ error: error.message || 'Authentication failed' });
   }
 });

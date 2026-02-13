@@ -307,7 +307,6 @@ router.post('/orders/tl', async (req, res) => {
 
     // IMPORTANT: Decrease stock and handle point deduction
     const ProductTL = require('../models/ProductTL');
-    const ProductPoint = require('../models/ProductPoint');
     const User = require('../models/User');
     const Loyalty = require('../models/Loyalty');
     
@@ -433,19 +432,34 @@ router.post('/orders/point', async (req, res) => {
       });
     }
 
+    // Fetch product details to get collectionId
+    const orderItems = [];
+    
+    for (const item of items) {
+      const product = await ProductPoint.findById(item.productId).populate('collectionId');
+      
+      if (!product) {
+        continue;
+      }
+
+      orderItems.push({
+        productId: item.productId,
+        productName: item.productName || product.name,
+        quantity: item.quantity,
+        unitPoint: item.points,
+        collectionId: product.collectionId?._id,
+        collectionName: product.collectionId?.name,
+        note: item.note || ''
+      });
+    }
+
     // Create order
     const OrderPoint = require('../models/OrderPoint');
     const order = await OrderPoint.create({
       businessId,
       userId,
-      items: items.map(item => ({
-        productId: item.productId,
-        productName: item.productName || 'Ürün',
-        quantity: item.quantity,
-        unitPoint: item.points, // Field name: unitPoint
-        note: item.note || ''
-      })),
-      totalPoint: totalPoints, // Field name: totalPoint
+      items: orderItems,
+      totalPoint: totalPoints,
       status: 'pending',
       orderSource: 'kiosk'
     });
@@ -463,7 +477,6 @@ router.post('/orders/point', async (req, res) => {
     }
 
     // IMPORTANT: Decrease stock for Point products
-    const ProductPoint = require('../models/ProductPoint');
     for (const item of items) {
       if (item.productId) {
         await ProductPoint.findByIdAndUpdate(item.productId, {

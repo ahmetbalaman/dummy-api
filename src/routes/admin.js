@@ -11,10 +11,51 @@ const Shipment = require('../models/Shipment');
 const OrderTL = require('../models/OrderTL');
 const OrderPoint = require('../models/OrderPoint');
 const Log = require('../models/Log');
+const User = require('../models/User');
 const { cleanOldLogs, getLogStats, logger } = require('../utils/logger');
 
 // All admin routes require authentication
 router.use(protect, restrictTo('admin'));
+
+// Get all users with pagination
+router.get('/users', async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Search query
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select('-__v')
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .skip(skip)
+        .lean(),
+      User.countDocuments(query)
+    ]);
+    
+    res.json({
+      users,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Get all businesses
 router.get('/businesses', async (req, res) => {
@@ -669,14 +710,16 @@ router.get('/system', async (req, res) => {
       totalBusinesses,
       activeBusinesses,
       totalOrders,
-      totalRevenue
+      totalRevenue,
+      totalUsers
     ] = await Promise.all([
       Business.countDocuments(),
       Business.countDocuments({ subscriptionStatus: 'active' }),
       OrderTL.countDocuments(),
       OrderTL.aggregate([
         { $group: { _id: null, total: { $sum: '$totalTL' } } }
-      ])
+      ]),
+      User.countDocuments()
     ]);
 
     res.json({
@@ -684,6 +727,7 @@ router.get('/system', async (req, res) => {
       activeBusinesses,
       totalOrders,
       totalRevenue: totalRevenue[0]?.total || 0,
+      totalUsers,
       timestamp: new Date()
     });
   } catch (error) {
