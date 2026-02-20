@@ -8,7 +8,8 @@ const userSchema = new mongoose.Schema({
   provider: { type: String, enum: ['google', 'apple'], required: true },
   providerId: { type: String, required: true },
   role: { type: String, default: 'user', enum: ['user'] },
-  loyaltyPoints: { type: Number, default: 0 } // Toplam puan
+  loyaltyPoints: { type: Number, default: 0 }, // Toplam puan
+  isActive: { type: Boolean, default: true } // Hesap aktif mi?
 }, {
   timestamps: true
 });

@@ -57,6 +57,216 @@ router.get('/users', async (req, res) => {
   }
 });
 
+// Get user details with all orders and loyalty points across all businesses
+router.get('/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const Loyalty = require('../models/Loyalty');
+    
+    // Kullanıcı bilgilerini al
+    const user = await User.findById(userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Tüm işletmelerdeki loyalty puanlarını al
+    const loyalties = await Loyalty.find({ userId })
+      .populate('businessId', 'name address')
+      .lean();
+
+    // Tüm işletmelerdeki siparişlerini al
+    const [ordersTL, ordersPoint] = await Promise.all([
+      OrderTL.find({ userId })
+        .populate('businessId', 'name address')
+        .sort('-createdAt')
+        .lean(),
+      OrderPoint.find({ userId })
+        .populate('businessId', 'name address')
+        .sort('-createdAt')
+        .lean()
+    ]);
+
+    // Siparişleri birleştir
+    const tlOrders = ordersTL.map(order => ({ ...order, orderType: 'tl' }));
+    const pointOrders = ordersPoint.map(order => ({ ...order, orderType: 'point' }));
+    const allOrders = [...tlOrders, ...pointOrders].sort((a, b) => 
+      new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    // İşletme bazında istatistikler
+    const businessStats = {};
+    
+    ordersTL.forEach(order => {
+      const businessId = order.businessId?._id?.toString();
+      if (!businessId) return;
+      
+      if (!businessStats[businessId]) {
+        businessStats[businessId] = {
+          businessId: businessId,
+          businessName: order.businessId.name,
+          businessAddress: order.businessId.address,
+          totalOrders: 0,
+          totalSpentTL: 0,
+          totalSpentPoints: 0,
+          currentLoyaltyPoints: 0
+        };
+      }
+      businessStats[businessId].totalOrders++;
+      businessStats[businessId].totalSpentTL += order.totalTL || 0;
+    });
+
+    ordersPoint.forEach(order => {
+      const businessId = order.businessId?._id?.toString();
+      if (!businessId) return;
+      
+      if (!businessStats[businessId]) {
+        businessStats[businessId] = {
+          businessId: businessId,
+          businessName: order.businessId.name,
+          businessAddress: order.businessId.address,
+          totalOrders: 0,
+          totalSpentTL: 0,
+          totalSpentPoints: 0,
+          currentLoyaltyPoints: 0
+        };
+      }
+      businessStats[businessId].totalOrders++;
+      businessStats[businessId].totalSpentPoints += order.totalPoint || 0;
+    });
+
+    // Loyalty puanlarını ekle
+    loyalties.forEach(loyalty => {
+      const businessId = loyalty.businessId?._id?.toString();
+      if (!businessId) return;
+      
+      if (!businessStats[businessId]) {
+        businessStats[businessId] = {
+          businessId: businessId,
+          businessName: loyalty.businessId.name,
+          businessAddress: loyalty.businessId.address,
+          totalOrders: 0,
+          totalSpentTL: 0,
+          totalSpentPoints: 0,
+          currentLoyaltyPoints: loyalty.points || 0
+        };
+      } else {
+        businessStats[businessId].currentLoyaltyPoints = loyalty.points || 0;
+      }
+    });
+
+    // Genel istatistikler
+    const stats = {
+      totalOrders: allOrders.length,
+      totalSpentTL: ordersTL.reduce((sum, o) => sum + (o.totalTL || 0), 0),
+      totalSpentPoints: ordersPoint.reduce((sum, o) => sum + (o.totalPoint || 0), 0),
+      completedOrders: allOrders.filter(o => o.status === 'completed').length,
+      cancelledOrders: allOrders.filter(o => o.status === 'cancelled').length,
+      firstOrderDate: allOrders.length > 0 ? allOrders[allOrders.length - 1].createdAt : null,
+      lastOrderDate: allOrders.length > 0 ? allOrders[0].createdAt : null,
+      businessStats: Object.values(businessStats)
+    };
+
+    // Kullanıcıya yapılan admin işlemlerinin loglarını al
+    const userLogs = await Log.find({
+      $or: [
+        { 'metadata.userId': userId },
+        { 'metadata.userId': user._id }
+      ],
+      category: 'user'
+    })
+      .sort('-createdAt')
+      .limit(50)
+      .lean();
+    
+    console.log(`📋 ${user.name} için ${userLogs.length} log kaydı bulundu`);
+
+    res.json({
+      user,
+      orders: allOrders,
+      stats,
+      logs: userLogs
+    });
+  } catch (error) {
+    console.error('User details error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update user (deactivate/activate, adjust points per business)
+router.patch('/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { isActive, loyaltyAdjustment, businessId, reason } = req.body;
+    const Loyalty = require('../models/Loyalty');
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const oldStatus = user.isActive;
+    const changes = [];
+
+    // Kullanıcı durumunu güncelle
+    if (typeof isActive === 'boolean') {
+      user.isActive = isActive;
+      changes.push(`Durum: ${oldStatus ? 'Aktif' : 'Deaktif'} → ${user.isActive ? 'Aktif' : 'Deaktif'}`);
+    }
+
+    // İşletme bazında puan ayarlaması
+    if (typeof loyaltyAdjustment === 'number' && businessId) {
+      const loyalty = await Loyalty.findOne({ userId, businessId });
+      
+      if (!loyalty) {
+        // Yeni loyalty kaydı oluştur
+        await Loyalty.create({
+          userId,
+          businessId,
+          points: Math.max(0, loyaltyAdjustment)
+        });
+        changes.push(`Puan: 0 → ${Math.max(0, loyaltyAdjustment)} (${businessId})`);
+      } else {
+        const oldPoints = loyalty.points;
+        loyalty.points = Math.max(0, loyalty.points + loyaltyAdjustment);
+        await loyalty.save();
+        changes.push(`Puan: ${oldPoints} → ${loyalty.points} (${loyaltyAdjustment > 0 ? '+' : ''}${loyaltyAdjustment})`);
+      }
+      
+      const business = await require('../models/Business').findById(businessId);
+      if (business) {
+        changes.push(`İşletme: ${business.name}`);
+      }
+    }
+
+    await user.save();
+
+    // Log kaydı
+    if (changes.length > 0) {
+      const logEntry = await Log.create({
+        level: user.isActive ? 'info' : 'warning',
+        category: 'user',
+        message: `Kullanıcı güncellendi: ${user.name}`,
+        metadata: {
+          userId: user._id,
+          userName: user.name,
+          changes: changes,
+          reason: reason || 'Belirtilmedi',
+          adminAction: true
+        }
+      });
+      console.log('✅ Log kaydı oluşturuldu:', logEntry._id);
+    }
+
+    const userData = user.toObject();
+    delete userData.password;
+
+    res.json(userData);
+  } catch (error) {
+    console.error('User update error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Get all businesses
 router.get('/businesses', async (req, res) => {
   try {

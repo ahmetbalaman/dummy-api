@@ -10,7 +10,7 @@ const logSchema = new mongoose.Schema({
   message: { type: String, required: true },
   category: { 
     type: String, 
-    enum: ['auth', 'business', 'collection', 'shipment', 'order', 'system', 'api'], 
+    enum: ['auth', 'business', 'collection', 'shipment', 'order', 'system', 'api', 'user'], 
     default: 'system',
     index: true
   },

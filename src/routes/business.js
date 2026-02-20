@@ -12,6 +12,7 @@ const OrderPoint = require('../models/OrderPoint');
 const Shipment = require('../models/Shipment');
 const Log = require('../models/Log');
 const Loyalty = require('../models/Loyalty');
+const User = require('../models/User');
 
 // All business routes require authentication
 router.use(protect, restrictTo('business'));
@@ -542,10 +543,11 @@ router.patch('/products-point/:id/stock', async (req, res) => {
 // Combined Orders - TL and Point orders together
 router.get('/orders', async (req, res) => {
   try {
-    const { status, startDate, endDate } = req.query;
+    const { status, startDate, endDate, userId } = req.query;
     const query = { businessId: req.businessId };
     
     if (status) query.status = status;
+    if (userId) query.userId = userId; // Belirli bir kullanıcının siparişlerini filtrele
     if (startDate || endDate) {
       query.createdAt = {};
       if (startDate) query.createdAt.$gte = new Date(startDate);
@@ -555,10 +557,10 @@ router.get('/orders', async (req, res) => {
     // Fetch both TL and Point orders
     const [ordersTL, ordersPoint] = await Promise.all([
       OrderTL.find(query)
-        .populate('userId', 'name email avatarUrl')
+        .populate('userId', 'name email avatarUrl phone')
         .lean(),
       OrderPoint.find(query)
-        .populate('userId', 'name email avatarUrl')
+        .populate('userId', 'name email avatarUrl phone')
         .lean()
     ]);
 
@@ -574,6 +576,164 @@ router.get('/orders', async (req, res) => {
     res.json(allOrders);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Get customers (users who made orders at this business)
+router.get('/customers', async (req, res) => {
+  try {
+    // MongoDB aggregation ile daha verimli - sadece özet bilgiler
+    const [tlCustomers, pointCustomers] = await Promise.all([
+      OrderTL.aggregate([
+        { $match: { businessId: req.businessId, userId: { $ne: null } } }, // null userId'leri filtrele
+        { $group: {
+          _id: '$userId',
+          totalOrders: { $sum: 1 },
+          totalSpent: { $sum: '$totalTL' },
+          lastOrderDate: { $max: '$createdAt' },
+          firstOrderDate: { $min: '$createdAt' }
+        }}
+      ]),
+      OrderPoint.aggregate([
+        { $match: { businessId: req.businessId, userId: { $ne: null } } }, // null userId'leri filtrele
+        { $group: {
+          _id: '$userId',
+          totalOrders: { $sum: 1 },
+          totalSpent: { $sum: '$totalPoint' },
+          lastOrderDate: { $max: '$createdAt' },
+          firstOrderDate: { $min: '$createdAt' }
+        }}
+      ])
+    ]);
+
+    // Kullanıcı ID'lerini topla
+    const userIds = new Set([
+      ...tlCustomers.map(c => c._id),
+      ...pointCustomers.map(c => c._id)
+    ]);
+
+    // Kullanıcı bilgilerini tek sorguda al
+    const users = await User.find({ _id: { $in: Array.from(userIds) } })
+      .select('name email avatarUrl phone')
+      .lean();
+
+    // Kullanıcı bilgilerini map'e çevir
+    const userMap = new Map(users.map(u => [u._id.toString(), u]));
+
+    // Müşteri verilerini birleştir
+    const customerMap = new Map();
+
+    tlCustomers.forEach(c => {
+      if (!c._id) return; // userId null ise atla
+      const userId = c._id.toString();
+      const user = userMap.get(userId);
+      if (!user) return;
+
+      customerMap.set(userId, {
+        _id: userId,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        phone: user.phone,
+        totalOrders: c.totalOrders,
+        totalSpentTL: c.totalSpent,
+        totalSpentPoints: 0,
+        lastOrderDate: c.lastOrderDate,
+        firstOrderDate: c.firstOrderDate
+      });
+    });
+
+    pointCustomers.forEach(c => {
+      if (!c._id) return; // userId null ise atla
+      const userId = c._id.toString();
+      const user = userMap.get(userId);
+      if (!user) return;
+
+      if (customerMap.has(userId)) {
+        const customer = customerMap.get(userId);
+        customer.totalOrders += c.totalOrders;
+        customer.totalSpentPoints = c.totalSpent;
+        if (new Date(c.lastOrderDate) > new Date(customer.lastOrderDate)) {
+          customer.lastOrderDate = c.lastOrderDate;
+        }
+        if (new Date(c.firstOrderDate) < new Date(customer.firstOrderDate)) {
+          customer.firstOrderDate = c.firstOrderDate;
+        }
+      } else {
+        customerMap.set(userId, {
+          _id: userId,
+          name: user.name,
+          email: user.email,
+          avatarUrl: user.avatarUrl,
+          phone: user.phone,
+          totalOrders: c.totalOrders,
+          totalSpentTL: 0,
+          totalSpentPoints: c.totalSpent,
+          lastOrderDate: c.lastOrderDate,
+          firstOrderDate: c.firstOrderDate
+        });
+      }
+    });
+
+    // Array'e çevir ve sırala
+    const customers = Array.from(customerMap.values()).sort((a, b) => 
+      new Date(b.lastOrderDate) - new Date(a.lastOrderDate)
+    );
+
+    res.json(customers);
+  } catch (error) {
+    console.error('Customers list error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get customer details with order history
+router.get('/customers/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Kullanıcı bilgilerini al
+    const user = await User.findById(userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Bu işletmedeki tüm siparişlerini al
+    const [ordersTL, ordersPoint] = await Promise.all([
+      OrderTL.find({ businessId: req.businessId, userId })
+        .sort('-createdAt')
+        .lean(),
+      OrderPoint.find({ businessId: req.businessId, userId })
+        .sort('-createdAt')
+        .lean()
+    ]);
+
+    // Siparişleri birleştir ve sırala
+    const tlOrders = ordersTL.map(order => ({ ...order, orderType: 'tl' }));
+    const pointOrders = ordersPoint.map(order => ({ ...order, orderType: 'point' }));
+    const allOrders = [...tlOrders, ...pointOrders].sort((a, b) => 
+      new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    // İstatistikleri hesapla - sadece bu işletmedeki siparişler
+    const stats = {
+      totalOrders: allOrders.length,
+      totalSpentTL: ordersTL.reduce((sum, o) => sum + (o.totalTL || 0), 0),
+      totalSpentPoints: ordersPoint.reduce((sum, o) => sum + (o.totalPoint || 0), 0),
+      completedOrders: allOrders.filter(o => o.status === 'completed').length,
+      cancelledOrders: allOrders.filter(o => o.status === 'cancelled').length,
+      firstOrderDate: allOrders.length > 0 ? allOrders[allOrders.length - 1].createdAt : null,
+      lastOrderDate: allOrders.length > 0 ? allOrders[0].createdAt : null
+    };
+
+    res.json({
+      user,
+      orders: allOrders,
+      stats
+    });
+  } catch (error) {
+    console.error('Customer details error:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
 
@@ -1071,16 +1231,21 @@ router.patch('/shipments/:id/confirm', async (req, res) => {
             isActive: true
           });
           
-          // Koleksiyondaki ürünleri oluştur
+          // Koleksiyondaki ürünleri oluştur - CollectionSet'ten ürün bilgilerini al
           for (const item of shipment.products) {
+            // CollectionSet'teki ürün bilgilerini bul
+            const collectionProduct = collectionSet.products?.find(
+              p => p.productId === item.productId || p.productName === item.name
+            );
+            
             const product = await ProductPoint.create({
               businessId: req.businessId,
               collectionId: newCollection._id,
               collectionName: newCollection.name,
               name: item.name,
-              description: item.description || '',
+              description: collectionProduct?.description || item.description || '',
               pricePoint: item.pricePoint,
-              imageUrl: item.imageUrl || '',
+              imageUrl: collectionProduct?.imageUrl || item.imageUrl || '',
               stock: item.quantity,
               isActive: true
             });
@@ -1111,15 +1276,19 @@ router.patch('/shipments/:id/confirm', async (req, res) => {
                 added: item.quantity
               });
             } else {
-              // Ürün yoksa yeni oluştur
+              // Ürün yoksa yeni oluştur - CollectionSet'ten ürün bilgilerini al
+              const collectionProduct = collectionSet.products?.find(
+                p => p.productId === item.productId || p.productName === item.name
+              );
+              
               product = await ProductPoint.create({
                 businessId: req.businessId,
                 collectionId: existingCollection._id,
                 collectionName: existingCollection.name,
                 name: item.name,
-                description: item.description || '',
+                description: collectionProduct?.description || item.description || '',
                 pricePoint: item.pricePoint,
-                imageUrl: item.imageUrl || '',
+                imageUrl: collectionProduct?.imageUrl || item.imageUrl || '',
                 stock: item.quantity,
                 isActive: true
               });
@@ -1183,7 +1352,8 @@ router.patch('/shipments/:id/confirm', async (req, res) => {
       updatedProducts 
     });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('Shipment confirmation error:', error);
+    res.status(400).json({ error: error.message, details: error.stack });
   }
 });
 
@@ -1245,7 +1415,7 @@ router.post('/qr', async (req, res) => {
 // Restock Orders - İşletmeden admin'e ürün siparişi
 router.post('/orders/restock', async (req, res) => {
   try {
-    const { items, collectionSetId } = req.body; // [{ productId, productName, quantity, pricePoint }]
+    const { items, collectionSetId } = req.body; // [{ productId, productName, description, imageUrl, quantity, pricePoint }]
     
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'Items required' });
@@ -1282,6 +1452,8 @@ router.post('/orders/restock', async (req, res) => {
       products: items.map(item => ({
         productId: item.productId,
         name: item.productName,
+        description: item.description || '',
+        imageUrl: item.imageUrl || '',
         quantity: item.quantity,
         pricePoint: item.pricePoint
       })),

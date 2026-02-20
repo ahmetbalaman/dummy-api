@@ -36,6 +36,17 @@ exports.protect = async (req, res, next) => {
       }
     } else if (decoded.role === 'user') {
       user = await User.findById(decoded.id);
+      
+      // Kullanıcı aktif mi kontrol et
+      if (user && !user.isActive) {
+        return res.status(403).json({ 
+          error: 'Account deactivated',
+          message: 'Hesabınız usulsüzlük kullanımı saptandığı için devre dışı bırakılmıştır. Lütfen destek ekibiyle iletişime geçin.',
+          supportPhone: '+90 555 123 4567',
+          supportEmail: 'destek@sistem.com',
+          deactivated: true
+        });
+      }
     }
 
     if (!user) {

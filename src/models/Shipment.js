@@ -15,8 +15,10 @@ const shipmentSchema = new mongoose.Schema({
   products: [{
     productId: String,
     name: String, // productName yerine name
+    description: String,
     quantity: Number,
-    pricePoint: Number
+    pricePoint: Number,
+    imageUrl: String
   }],
   notes: String,
   shippedAt: Date,

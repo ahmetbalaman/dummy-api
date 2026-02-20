@@ -8,6 +8,7 @@ const collectionSetSchema = new mongoose.Schema({
   products: [{
     productId: String,
     productName: String,
+    description: String,
     pricePoint: Number,
     imageUrl: String
   }],
