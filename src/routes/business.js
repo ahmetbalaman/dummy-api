@@ -742,11 +742,12 @@ router.patch('/orders/:id', async (req, res) => {
   try {
     const { status } = req.body;
     const { id } = req.params;
+    const { sendNotificationToUser } = require('../utils/firebase');
 
     // Try to find in TL orders first
     let order = await OrderTL.findOne(
       { _id: id, businessId: req.businessId }
-    ).populate('userId', 'name email avatarUrl');
+    ).populate('userId', 'name email avatarUrl fcmToken');
 
     let orderType = 'tl';
 
@@ -754,7 +755,7 @@ router.patch('/orders/:id', async (req, res) => {
     if (!order) {
       order = await OrderPoint.findOne(
         { _id: id, businessId: req.businessId }
-      ).populate('userId', 'name email avatarUrl');
+      ).populate('userId', 'name email avatarUrl fcmToken');
       orderType = 'point';
     }
 
@@ -767,6 +768,28 @@ router.patch('/orders/:id', async (req, res) => {
     // Durumu güncelle
     order.status = status;
     await order.save();
+
+    // Sipariş durumu "ready" (hazır) olduğunda bildirim gönder
+    if (status === 'ready' && oldStatus !== 'ready' && order.userId && order.userId.fcmToken) {
+      try {
+        await sendNotificationToUser(
+          order.userId.fcmToken,
+          {
+            title: '🎉 Siparişiniz Hazır!',
+            body: 'Siparişiniz hazır! Teslim alabilirsiniz.'
+          },
+          {
+            orderId: order._id.toString(),
+            orderType: orderType,
+            status: 'ready'
+          }
+        );
+        console.log('✅ Notification sent to user:', order.userId.name);
+      } catch (notifError) {
+        console.error('❌ Failed to send notification:', notifError);
+        // Bildirim hatası siparişi etkilemez, devam et
+      }
+    }
 
     // Eğer sipariş "cancelled" durumuna geçtiyse, puan iadesi yap
     if (status === 'cancelled' && oldStatus !== 'cancelled') {

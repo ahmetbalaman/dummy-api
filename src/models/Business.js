@@ -50,7 +50,6 @@ businessSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-businessSchema.index({ email: 1 });
 businessSchema.index({ 'location.coordinates': '2dsphere' }); // Geospatial index for nearby search
 
 module.exports = mongoose.model('Business', businessSchema);

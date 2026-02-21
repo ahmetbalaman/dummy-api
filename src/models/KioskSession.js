@@ -10,7 +10,6 @@ const kioskSessionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-kioskSessionSchema.index({ qrCode: 1 });
 kioskSessionSchema.index({ expiresAt: 1 });
 
 module.exports = mongoose.model('KioskSession', kioskSessionSchema);

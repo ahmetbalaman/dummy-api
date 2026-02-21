@@ -6,3 +6,4 @@ keys/
 dist/
 build/
 coverage/
+firebase-service-account.json

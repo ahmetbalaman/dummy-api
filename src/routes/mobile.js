@@ -38,6 +38,27 @@ router.put('/profile', async (req, res) => {
   }
 });
 
+// Update FCM token
+router.put('/user/fcm-token', async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    
+    if (!fcmToken) {
+      return res.status(400).json({ error: 'FCM token required' });
+    }
+
+    await User.findByIdAndUpdate(
+      req.userId,
+      { fcmToken },
+      { new: true }
+    );
+
+    res.json({ success: true, message: 'FCM token updated' });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Get all businesses
 router.get('/businesses', async (req, res) => {
   try {
